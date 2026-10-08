@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#111b2b" />
+    <title>Noor · Flight assistant demo</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="experience" aria-label="Noor flight assistant demo">
+      <header class="topbar">
+        <span class="brand">Noor</span>
+        <span class="flight-route">Cloudline Air · CL 204 <span aria-hidden="true">·</span> JFK → HND</span>
+        <button class="info-button" id="flightInfoButton" type="button" aria-expanded="false" aria-controls="flightCard">Flight details</button>
+      </header>
+
+      <section class="cabin" aria-label="Airplane cabin scene">
+        <div class="scene-shade" aria-hidden="true"></div>
+
+        <div class="noor-wrap" id="noorWrap" data-pose="welcome" role="img" aria-label="Noor, your in-flight guide">
+          <img class="noor-sprite" src="./assets/noor.png" alt="" />
+          <img class="noor-sprite noor-thinking" src="./assets/noor-thinking.png" alt="" />
+        </div>
+
+        <aside class="flight-card" id="flightCard" hidden aria-label="Mock flight details">
+          <div class="card-heading"><span>DEMO FLIGHT</span><span>FICTIONAL DATA</span></div>
+          <div class="route-line">
+            <div><strong>JFK</strong><small>New York</small><small>Oct 12 · 11:30 AM EDT</small></div>
+            <span class="route-plane" aria-hidden="true">✈</span>
+            <div class="route-end"><strong>HND</strong><small>Tokyo Haneda</small><small>Oct 13 · 2:40 PM JST</small></div>
+          </div>
+          <p class="flight-meta">Cloudline Air · CL 204 · Gate 32 · Boarding 10:45 AM</p>
+        </aside>
+
+        <section class="conversation" aria-label="Chat with Noor">
+          <div class="dialogue" id="dialogue" aria-live="polite" aria-atomic="true">
+            <p class="user-line" id="userLine" hidden><span class="speaker">YOU</span><span id="userText"></span></p>
+            <p class="noor-line"><span class="speaker">NOOR</span><span id="responseText">Hi, I’m Noor. Ask me about this flight.</span></p>
+            <p class="source-line" id="sourceLine">Fictional flight information · Not live</p>
+          </div>
+          <form class="message-form" id="messageForm">
+            <label class="visually-hidden" for="messageInput">Type a message for Noor</label>
+            <input id="messageInput" name="message" type="text" maxlength="500" autocomplete="off" placeholder="Ask Noor something…" />
+            <button class="send-button" type="submit" aria-label="Send message">Send <span aria-hidden="true">↗</span></button>
+          </form>
+          <p class="demo-note">For urgent help, contact cabin crew.</p>
+        </section>
+      </section>
+    </main>
+    <script src="./app.js" defer></script>
+  </body>
+</html>

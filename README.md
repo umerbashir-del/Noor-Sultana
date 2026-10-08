@@ -1,6 +1,6 @@
 # Noor Sultana
 
-Original AI agent character design and animation reference assets.
+A visual-novel-style in-flight assistant demo, with original character artwork and product notes.
 
 ## Assets
 
@@ -8,4 +8,10 @@ The `assets/` folder contains the master character sheet, turnaround, facial fea
 
 ## Documents
 
-The `Documents/` folder is reserved for future writing and project notes.
+The `Documents/` folder contains the Noor assistant PRD summary and a link to the source Google Doc.
+
+## Prototype
+
+The passenger demo uses Claude to answer questions about a fictional Cloudline Air flight from New York to Tokyo. Noor switches between welcoming and thoughtful poses in an airplane cabin scene.
+
+Follow the [setup instructions](prototype/README.md) to add your Anthropic key and start the local server. Open `http://127.0.0.1:4173` to chat; opening the HTML file directly does not connect to the server. The demo does not access live airline services.

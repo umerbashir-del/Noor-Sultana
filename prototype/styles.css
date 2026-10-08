@@ -1,0 +1,93 @@
+:root {
+  color-scheme: dark;
+  --ink: #fffaf0;
+  --muted: #d4d7df;
+  --gold: #e9c778;
+  --panel: rgba(17, 27, 43, .92);
+  --line: rgba(255, 255, 255, .18);
+  font-family: 'Avenir Next', Avenir, 'Segoe UI', sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; color: var(--ink); background: #111b2b; }
+button, input { font: inherit; }
+button { color: inherit; }
+.experience { min-height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+.topbar { position: relative; z-index: 5; height: 54px; flex: 0 0 54px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 clamp(16px, 4vw, 48px); background: #111b2b; }
+.brand { color: var(--gold); font-family: Georgia, serif; font-size: 20px; }
+.flight-route { color: #e2e5ea; font-size: 12px; }
+.info-button { padding: 7px 11px; border: 1px solid var(--line); border-radius: 7px; background: transparent; cursor: pointer; font-size: 11px; }
+.info-button:hover, .info-button[aria-expanded="true"] { border-color: var(--gold); color: var(--gold); }
+
+.cabin { position: relative; flex: 1; min-height: 620px; isolation: isolate; overflow: hidden; background: #273144 url('./assets/airplane-cabin.png') center center / cover no-repeat; }
+.scene-shade { position: absolute; z-index: -1; inset: 0; background: linear-gradient(180deg, rgba(12, 19, 32, .16) 0%, transparent 38%, rgba(10, 17, 29, .18) 68%, rgba(10, 17, 29, .7) 100%); }
+
+.noor-wrap { position: absolute; z-index: 1; left: 50%; bottom: 18%; height: min(70vh, 680px); aspect-ratio: 2 / 3; transform: translateX(-50%); animation: noor-idle 3.8s ease-in-out infinite; }
+.noor-sprite { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 12px 16px rgba(0,0,0,.28)); opacity: 0; transition: opacity .2s ease; }
+.noor-wrap[data-pose="welcome"] .noor-sprite:not(.noor-thinking),
+.noor-wrap[data-pose="thinking"] .noor-thinking,
+.noor-wrap[data-pose="concerned"] .noor-thinking { opacity: 1; }
+.noor-wrap.responding { animation: noor-step .8s ease-in-out; }
+
+@keyframes noor-idle {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(-4px); }
+}
+@keyframes noor-step {
+  0%, 100% { transform: translateX(-50%) translateY(0) rotate(0); }
+  28% { transform: translateX(calc(-50% - 20px)) translateY(-5px) rotate(-1deg); }
+  62% { transform: translateX(calc(-50% + 13px)) translateY(-2px) rotate(1deg); }
+}
+
+.conversation { position: absolute; z-index: 3; left: 50%; bottom: 18px; width: min(760px, calc(100% - 28px)); transform: translateX(-50%); padding: 14px 16px 10px; border: 1px solid rgba(233,199,120,.72); border-radius: 10px; background: var(--panel); box-shadow: 0 12px 35px rgba(0,0,0,.28); backdrop-filter: blur(10px); }
+.dialogue { min-height: 57px; }
+.noor-line, .user-line { display: flex; align-items: flex-start; gap: 10px; margin: 0; font-size: 13px; line-height: 1.5; }
+.noor-line { color: var(--ink); }
+.user-line { justify-content: flex-end; margin-bottom: 9px; color: #e7e8ec; }
+.user-line > span:last-child { max-width: 78%; padding: 6px 9px; border-radius: 8px; background: rgba(255,255,255,.09); }
+.speaker { flex: 0 0 auto; padding-top: 2px; color: var(--gold); font-size: 9px; font-weight: 700; letter-spacing: .1em; }
+.source-line { margin: 5px 0 10px 39px; color: #b6bec9; font-size: 9px; }
+.message-form { display: flex; gap: 8px; padding: 5px; border: 1px solid rgba(255,255,255,.22); border-radius: 7px; background: rgba(4,9,16,.5); }
+.message-form input { min-width: 0; flex: 1; padding: 8px 9px; border: 0; outline: 0; color: var(--ink); background: transparent; font-size: 12px; }
+.message-form input::placeholder { color: #b6bec9; }
+.send-button { padding: 8px 11px; border: 0; border-radius: 5px; color: #1a2330; background: var(--gold); cursor: pointer; font-size: 11px; font-weight: 700; }
+.send-button:hover { background: #f3d896; }
+.send-button:disabled { cursor: wait; opacity: .65; }
+.message-form input:disabled { opacity: .7; }
+.demo-note { margin: 7px 0 0; color: #c2c8d1; text-align: center; font-size: 9px; }
+
+.flight-card { position: absolute; z-index: 6; top: 16px; right: clamp(14px, 4vw, 48px); width: min(390px, calc(100% - 28px)); padding: 15px; border: 1px solid var(--line); border-radius: 10px; background: rgba(17,27,43,.96); box-shadow: 0 12px 30px rgba(0,0,0,.28); }
+.flight-card[hidden] { display: none; }
+.card-heading { display: flex; justify-content: space-between; color: var(--gold); font-size: 9px; font-weight: 700; letter-spacing: .1em; }
+.route-line { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; margin: 15px 0; }
+.route-line strong { display: block; font-size: 23px; }
+.route-line small { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; }
+.route-end { text-align: right; }
+.route-plane { color: var(--gold); font-size: 19px; }
+.flight-meta { margin: 0; padding-top: 10px; border-top: 1px solid var(--line); color: #e2e5ea; font-size: 10px; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; clip-path: inset(50%); }
+
+@media (max-width: 640px) {
+  .topbar { height: 50px; flex-basis: 50px; gap: 8px; padding: 0 12px; }
+  .brand { font-size: 18px; }
+  .flight-route { font-size: 9px; }
+  .info-button { padding: 6px 8px; font-size: 9px; }
+  .cabin { min-height: 650px; background-position: center center; }
+  .noor-wrap { bottom: 24%; height: min(64vh, 480px); }
+  .conversation { bottom: 10px; padding: 10px 11px 8px; }
+  .dialogue { min-height: 55px; }
+  .noor-line, .user-line { font-size: 12px; }
+  .flight-card { top: 10px; right: 10px; }
+}
+
+@media (max-height: 700px) and (min-width: 641px) {
+  .noor-wrap { height: 60vh; bottom: 20%; }
+  .conversation { bottom: 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+}
