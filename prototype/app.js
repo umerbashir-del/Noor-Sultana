@@ -46,6 +46,7 @@ const talkButton = document.querySelector('#talkButton');
 const doneButton = document.querySelector('#doneButton');
 const stopButton = document.querySelector('#stopButton');
 const micStatus = document.querySelector('#micStatus');
+const transcriptReview = document.querySelector('#transcriptReview');
 
 const conversation = [];
 const maxTurns = 12;
@@ -64,10 +65,10 @@ let pendingUserMessage;
 let transcribeRequest;
 let recorder;
 let micStream;
-let micChunks = [];
 let discardRecording = false;
 let recordTimeout;
 let micSequence = 0;
+let reviewingTranscript = false;
 let arrivalEmailDraft;
 let emailChallengeId;
 let emailVerified = false;
@@ -203,6 +204,8 @@ function clearConversationDisplay() {
   conversation.length = 0;
   pendingUserMessage = undefined;
   input.value = '';
+  reviewingTranscript = false;
+  transcriptReview.hidden = true;
   userText.textContent = '';
   userLine.hidden = true;
   responseText.textContent = 'Hi, I’m Noor. Ask me about this flight.';
@@ -495,11 +498,31 @@ function interruptNoor() {
   transcribeRequest = undefined;
 }
 
+function clearTranscriptReview(clearText = false) {
+  if (clearText && reviewingTranscript) input.value = '';
+  reviewingTranscript = false;
+  transcriptReview.hidden = true;
+}
+
 async function sendMessage(message) {
   const cleanMessage = message.trim();
   if (!cleanMessage || !sessionReady || sendButton.disabled) return;
+  if (cleanMessage.length > input.maxLength) {
+    micStatus.textContent = 'Question is too long. Shorten it before pressing Send.';
+    input.focus();
+    return;
+  }
 
-  if (recorder?.state === 'recording') finishRecording(true);
+  const fromTranscript = reviewingTranscript;
+  if (fromTranscript) micStatus.textContent = 'Sending your reviewed question to Noor…';
+  clearTranscriptReview();
+
+  if (recorder?.state === 'recording') {
+    micSequence += 1;
+    finishRecording(true);
+  }
+  transcribeRequest?.abort();
+  transcribeRequest = undefined;
   const wasGenerating = Boolean(voiceRequest);
   stopSpeech();
   if (wasGenerating) void cancelSynthesis();
@@ -553,6 +576,7 @@ async function sendMessage(message) {
     }
     conversation.push({ role: 'assistant', content: data.reply });
     pendingUserMessage = undefined;
+    if (fromTranscript) micStatus.textContent = 'Question sent. Press Talk to ask another one.';
     idleDeadline = Date.now() + 15 * 60_000;
     scheduleSessionEnd();
     animateNoor();
@@ -568,6 +592,12 @@ async function sendMessage(message) {
       const index = conversation.indexOf(userMessage);
       if (index !== -1) conversation.splice(index, 1);
       pendingUserMessage = undefined;
+      input.value = cleanMessage;
+      if (fromTranscript) {
+        reviewingTranscript = true;
+        transcriptReview.hidden = false;
+        micStatus.textContent = 'Question was not sent. Check it and press Send to try again.';
+      }
       responseText.textContent = error.message || 'I couldn’t connect just now. Please try again.';
       sourceLine.textContent = 'Connection unavailable';
       renderKnowledgeSources();
@@ -579,6 +609,7 @@ async function sendMessage(message) {
       noor.removeAttribute('aria-busy');
       input.disabled = !sessionReady;
       sendButton.disabled = !sessionReady;
+      talkButton.disabled = !sessionReady;
       weatherNowButton.disabled = !sessionReady;
       weatherArrivalButton.disabled = !sessionReady;
       arrivalEmailButton.disabled = !sessionReady;
@@ -587,7 +618,7 @@ async function sendMessage(message) {
   }
 }
 
-async function transcribeAndSend(blob) {
+async function transcribeForReview(blob) {
   if (blob.size < 1000) {
     micStatus.textContent = 'Recording was too short. Please try again.';
     talkButton.disabled = !sessionReady;
@@ -606,10 +637,19 @@ async function transcribeAndSend(blob) {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Could not transcribe the recording.');
     if (transcribeRequest !== controller) return;
-    micStatus.textContent = `Heard: ${data.text}`;
     talkButton.disabled = !sessionReady;
-    input.value = data.text;
-    void sendMessage(data.text);
+    const transcript = typeof data.text === 'string' ? data.text.trim() : '';
+    if (!transcript) {
+      micStatus.textContent = 'No speech was recognized. Press Talk to try again, or type your question.';
+      return;
+    }
+    input.value = transcript;
+    reviewingTranscript = true;
+    transcriptReview.hidden = false;
+    micStatus.textContent = transcript.length > input.maxLength
+      ? 'Transcript is too long. Shorten it before pressing Send.'
+      : 'Transcript ready. Check or edit it, then press Send. Press Talk to record again or Stop to discard it.';
+    input.focus();
   } catch (error) {
     if (error.name !== 'AbortError') micStatus.textContent = error.message || 'Could not transcribe. Please try again.';
     talkButton.disabled = !sessionReady;
@@ -625,6 +665,7 @@ async function startRecording() {
     return;
   }
   interruptNoor();
+  clearTranscriptReview(true);
   if (!voiceEnabled) setVoiceEnabled(true, false);
   const session = ++micSequence;
   talkButton.disabled = true;
@@ -642,22 +683,25 @@ async function startRecording() {
     const mimeType = preferred.find((type) => MediaRecorder.isTypeSupported(type));
     const activeRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
     recorder = activeRecorder;
-    micChunks = [];
+    const chunks = [];
     discardRecording = false;
     activeRecorder.addEventListener('dataavailable', (event) => {
-      if (event.data.size) micChunks.push(event.data);
+      if (event.data.size) chunks.push(event.data);
     });
     activeRecorder.addEventListener('stop', () => {
-      const blob = new Blob(micChunks, { type: activeRecorder.mimeType || mimeType || 'audio/webm' });
+      const blob = new Blob(chunks, { type: activeRecorder.mimeType || mimeType || 'audio/webm' });
       if (recorder === activeRecorder) recorder = undefined;
-      micChunks = [];
+      if (session !== micSequence) return;
       if (discardRecording) talkButton.disabled = !sessionReady;
-      else void transcribeAndSend(blob);
+      else void transcribeForReview(blob);
     }, { once: true });
     activeRecorder.start(250);
     doneButton.disabled = false;
     micStatus.textContent = 'Listening… press Done when you finish.';
-    recordTimeout = window.setTimeout(() => finishRecording(false), 30_000);
+    recordTimeout = window.setTimeout(() => {
+      micStatus.textContent = 'Recording reached 30 seconds. Preparing your transcript…';
+      finishRecording(false);
+    }, 30_000);
   } catch {
     if (session !== micSequence) return;
     micStream?.getTracks().forEach((track) => track.stop());
@@ -676,15 +720,15 @@ doneButton.addEventListener('click', () => {
 });
 stopButton.addEventListener('click', () => {
   micSequence += 1;
-  const hadRecorder = Boolean(recorder);
   finishRecording(true);
   interruptNoor();
+  clearTranscriptReview(true);
   void cancelSynthesis();
   responseText.textContent = 'Stopped. Ask another question when you’re ready.';
   sourceLine.textContent = 'Stopped';
   voiceStatus.textContent = voiceEnabled ? 'Voice on' : 'Voice off';
   micStatus.textContent = 'Stopped. Press Talk to ask another question.';
-  if (!hadRecorder) talkButton.disabled = !sessionReady;
+  talkButton.disabled = !sessionReady;
   setPose('welcome');
 });
 

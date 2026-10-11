@@ -100,6 +100,8 @@ button { color: inherit; }
 .send-button:hover { background: #f3d896; }
 .send-button:disabled { cursor: wait; opacity: .65; }
 .message-form input:disabled { opacity: .7; }
+.transcript-review { margin: 6px 3px 0; padding: 7px 9px; border: 1px solid rgba(233,199,120,.55); border-radius: 6px; color: var(--ink); background: rgba(233,199,120,.12); font-size: 11px; line-height: 1.4; }
+.transcript-review[hidden] { display: none; }
 .session-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; color: #c2c8d1; font-size: 10px; }
 .session-button { flex: 0 0 auto; padding: 5px 8px; border: 1px solid rgba(255,180,180,.55); border-radius: 5px; background: transparent; cursor: pointer; font-size: 10px; }
 .session-button:hover, .session-button:focus-visible { border-color: var(--gold); color: var(--gold); }
@@ -108,10 +110,11 @@ button { color: inherit; }
 .voice-button { flex: 0 0 auto; padding: 5px 8px; border: 1px solid var(--line); border-radius: 5px; background: transparent; cursor: pointer; font-size: 10px; }
 .voice-button:hover, .voice-button[aria-pressed="true"] { border-color: var(--gold); color: var(--gold); }
 .mic-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; color: #c2c8d1; font-size: 10px; }
-.mic-button { padding: 6px 10px; border: 1px solid var(--line); border-radius: 5px; background: rgba(255,255,255,.07); cursor: pointer; font-size: 10px; }
+.mic-button { min-height: 36px; padding: 8px 13px; border: 1px solid var(--line); border-radius: 6px; background: rgba(255,255,255,.09); cursor: pointer; font-size: 12px; font-weight: 700; }
 .mic-button:hover, .mic-button:focus-visible { border-color: var(--gold); color: var(--gold); }
 .mic-button:disabled { cursor: default; opacity: .45; }
-.stop-button { border-color: rgba(255,180,180,.55); }
+.mic-button:not(:disabled) { border-color: var(--gold); }
+.stop-button, .stop-button:not(:disabled) { border-color: rgba(255,180,180,.75); }
 #micStatus { flex: 1 1 190px; }
 .demo-note { margin: 7px 0 0; color: #c2c8d1; text-align: center; font-size: 9px; }
 

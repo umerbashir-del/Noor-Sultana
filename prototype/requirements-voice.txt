@@ -1,0 +1,7 @@
+# Matches the working local environment. Validate CPU/GPU performance on the
+# chosen Linux host before accepting public traffic.
+chatterbox-tts==0.1.7
+faster-whisper==1.2.1
+torch==2.6.0
+torchaudio==2.6.0
+soundfile==0.14.0

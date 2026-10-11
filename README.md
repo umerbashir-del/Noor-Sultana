@@ -15,3 +15,7 @@ The `Documents/` folder contains the Noor assistant PRD summary and a link to th
 The passenger demo uses Claude to answer questions about a fictional Cloudline Air flight from New York to Tokyo. A separate read-only Open-Meteo lookup supplies real public weather near JFK and Tokyo Haneda. Noor can also schedule a fixed arrival email to a verified passenger address when Resend is configured. Noor switches between welcoming and thoughtful poses in an airplane cabin scene.
 
 Follow the [setup instructions](prototype/README.md) to add your Anthropic key and start the local server. Open `http://127.0.0.1:4173` to chat; opening the HTML file directly does not connect to the server. The demo does not access live airline services, and its flight details are fictional.
+
+## Launch preparation
+
+The prototype now includes public-origin and secure-cookie settings, per-browser and overall daily usage limits, structured request and Claude token logs, a health check, and retention cleanup. See [the prototype guide](prototype/README.md) for settings and privacy limits. The root [Dockerfile](Dockerfile) prepares a Linux server image; the [Supabase migration](supabase/migrations/20261011_noor_foundation.sql) and [daily cleanup job](supabase/cron.sql) are ready for a future project connection. The live app still uses one local SQLite-backed server until that connection is built and tested.
