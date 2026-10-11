@@ -42,7 +42,7 @@ button { color: inherit; }
   62% { transform: translateX(calc(-50% + 13px)) translateY(-2px) rotate(1deg); }
 }
 
-.conversation { position: absolute; z-index: 3; left: 50%; bottom: 18px; width: min(760px, calc(100% - 28px)); transform: translateX(-50%); padding: 14px 16px 10px; border: 1px solid rgba(233,199,120,.72); border-radius: 10px; background: var(--panel); box-shadow: 0 12px 35px rgba(0,0,0,.28); backdrop-filter: blur(10px); }
+.conversation { position: absolute; z-index: 3; left: 50%; bottom: 18px; width: min(760px, calc(100% - 28px)); max-height: calc(100vh - 76px); overflow-y: auto; transform: translateX(-50%); padding: 14px 16px 10px; border: 1px solid rgba(233,199,120,.72); border-radius: 10px; background: var(--panel); box-shadow: 0 12px 35px rgba(0,0,0,.28); backdrop-filter: blur(10px); }
 .dialogue { min-height: 57px; }
 .noor-line, .user-line { display: flex; align-items: flex-start; gap: 10px; margin: 0; font-size: 13px; line-height: 1.5; }
 .noor-line { color: var(--ink); }
@@ -50,6 +50,49 @@ button { color: inherit; }
 .user-line > span:last-child { max-width: 78%; padding: 6px 9px; border-radius: 8px; background: rgba(255,255,255,.09); }
 .speaker { flex: 0 0 auto; padding-top: 2px; color: var(--gold); font-size: 9px; font-weight: 700; letter-spacing: .1em; }
 .source-line { margin: 5px 0 10px 39px; color: #b6bec9; font-size: 9px; }
+.knowledge-sources { margin: -6px 0 10px 39px; font-size: 10px; }
+.knowledge-sources[hidden] { display: none; }
+.knowledge-sources a { color: var(--gold); }
+.weather-controls { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.weather-button { padding: 5px 8px; border: 1px solid var(--line); border-radius: 5px; background: rgba(255,255,255,.07); cursor: pointer; font-size: 10px; }
+.weather-button:hover, .weather-button:focus-visible { border-color: var(--gold); color: var(--gold); }
+.weather-button:disabled { cursor: wait; opacity: .65; }
+.weather-card { display: grid; gap: 3px; margin-bottom: 8px; padding: 9px 11px; border: 1px solid rgba(233,199,120,.38); border-radius: 7px; background: rgba(4,9,16,.55); font-size: 11px; }
+.weather-card[hidden] { display: none; }
+.weather-card strong { color: var(--gold); font-size: 12px; }
+.weather-card small { color: #c2c8d1; font-size: 9px; }
+.weather-card a { color: var(--gold); }
+.email-card { display: grid; gap: 6px; margin-bottom: 8px; padding: 10px 11px; border: 1px solid rgba(233,199,120,.55); border-radius: 7px; background: rgba(4,9,16,.7); font-size: 11px; }
+.email-card[hidden] { display: none; }
+.email-card-heading, .email-review-controls { display: flex; align-items: center; gap: 8px; }
+.email-review-controls[hidden], .email-jobs[hidden] { display: none; }
+.email-card-heading { justify-content: space-between; }
+.email-card-heading strong { color: var(--gold); font-size: 12px; }
+.email-card p { margin: 0; color: #d8dde5; }
+.email-card label { color: var(--gold); }
+.email-card input { min-width: 0; flex: 1; padding: 7px 8px; border: 1px solid var(--line); border-radius: 5px; color: var(--ink); background: rgba(255,255,255,.07); font-size: 11px; }
+.email-card button { padding: 6px 8px; border: 1px solid var(--line); border-radius: 5px; background: rgba(255,255,255,.07); cursor: pointer; font-size: 10px; }
+.email-card button:hover, .email-card button:focus-visible { border-color: var(--gold); color: var(--gold); }
+.email-card button:disabled { opacity: .55; cursor: not-allowed; }
+.email-jobs { border-top: 1px solid var(--line); padding-top: 7px; }
+.email-jobs ul { list-style: none; margin: 5px 0 0; padding: 0; }
+.email-jobs li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 0; border-top: 1px solid rgba(255,255,255,.08); }
+.email-review-dialog { width: min(680px, calc(100vw - 28px)); max-height: min(82vh, 760px); overflow-y: auto; padding: 22px; border: 1px solid var(--gold); border-radius: 12px; color: var(--ink); background: #111b2b; box-shadow: 0 24px 70px rgba(0,0,0,.65); }
+.email-review-dialog::backdrop { background: rgba(5,9,17,.82); }
+.review-step { color: var(--gold); font-size: 10px; font-weight: 700; letter-spacing: .13em; }
+.review-heading h2 { margin: 7px 0 8px; font-family: Georgia, serif; font-size: 25px; font-weight: 500; }
+.review-heading p { margin: 0; color: #d8dde5; font-size: 12px; line-height: 1.5; }
+.review-details { display: grid; gap: 0; margin: 18px 0; border: 1px solid var(--line); border-radius: 8px; }
+.review-details > div { display: grid; grid-template-columns: 95px minmax(0, 1fr); gap: 10px; padding: 10px 12px; font-size: 12px; }
+.review-details > div + div { border-top: 1px solid var(--line); }
+.review-details dt { color: var(--gold); }
+.review-details dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.review-message { padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: rgba(4,9,16,.55); }
+.review-message h3 { margin: 0 0 10px; color: var(--gold); font-size: 12px; }
+.review-message pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 12px; line-height: 1.6; }
+.review-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.review-actions button { padding: 9px 12px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); background: rgba(255,255,255,.07); cursor: pointer; font: inherit; font-size: 12px; }
+.review-actions button:hover, .review-actions button:focus-visible { border-color: var(--gold); color: var(--gold); }
 .message-form { display: flex; gap: 8px; padding: 5px; border: 1px solid rgba(255,255,255,.22); border-radius: 7px; background: rgba(4,9,16,.5); }
 .message-form input { min-width: 0; flex: 1; padding: 8px 9px; border: 0; outline: 0; color: var(--ink); background: transparent; font-size: 12px; }
 .message-form input::placeholder { color: #b6bec9; }
@@ -57,6 +100,19 @@ button { color: inherit; }
 .send-button:hover { background: #f3d896; }
 .send-button:disabled { cursor: wait; opacity: .65; }
 .message-form input:disabled { opacity: .7; }
+.session-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; color: #c2c8d1; font-size: 10px; }
+.session-button { flex: 0 0 auto; padding: 5px 8px; border: 1px solid rgba(255,180,180,.55); border-radius: 5px; background: transparent; cursor: pointer; font-size: 10px; }
+.session-button:hover, .session-button:focus-visible { border-color: var(--gold); color: var(--gold); }
+.session-button:disabled { cursor: default; opacity: .45; }
+.voice-controls { display: flex; align-items: center; gap: 9px; margin-top: 8px; color: #c2c8d1; font-size: 10px; }
+.voice-button { flex: 0 0 auto; padding: 5px 8px; border: 1px solid var(--line); border-radius: 5px; background: transparent; cursor: pointer; font-size: 10px; }
+.voice-button:hover, .voice-button[aria-pressed="true"] { border-color: var(--gold); color: var(--gold); }
+.mic-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; color: #c2c8d1; font-size: 10px; }
+.mic-button { padding: 6px 10px; border: 1px solid var(--line); border-radius: 5px; background: rgba(255,255,255,.07); cursor: pointer; font-size: 10px; }
+.mic-button:hover, .mic-button:focus-visible { border-color: var(--gold); color: var(--gold); }
+.mic-button:disabled { cursor: default; opacity: .45; }
+.stop-button { border-color: rgba(255,180,180,.55); }
+#micStatus { flex: 1 1 190px; }
 .demo-note { margin: 7px 0 0; color: #c2c8d1; text-align: center; font-size: 9px; }
 
 .flight-card { position: absolute; z-index: 6; top: 16px; right: clamp(14px, 4vw, 48px); width: min(390px, calc(100% - 28px)); padding: 15px; border: 1px solid var(--line); border-radius: 10px; background: rgba(17,27,43,.96); box-shadow: 0 12px 30px rgba(0,0,0,.28); }
@@ -79,6 +135,11 @@ button { color: inherit; }
   .noor-wrap { bottom: 24%; height: min(64vh, 480px); }
   .conversation { bottom: 10px; padding: 10px 11px 8px; }
   .dialogue { min-height: 55px; }
+  .email-review-controls { flex-wrap: wrap; }
+  .email-card input { flex-basis: 100%; }
+  .email-review-dialog { max-height: 90vh; padding: 16px; }
+  .review-heading h2 { font-size: 21px; }
+  .review-details > div { grid-template-columns: 75px minmax(0, 1fr); }
   .noor-line, .user-line { font-size: 12px; }
   .flight-card { top: 10px; right: 10px; }
 }
