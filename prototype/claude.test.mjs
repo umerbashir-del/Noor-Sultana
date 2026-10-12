@@ -48,12 +48,16 @@ test('sends a bounded Claude request and checks its reply', async () => {
     fetchImpl: async (url, options) => {
       assert.equal(url, 'https://api.anthropic.com/v1/messages');
       sent = JSON.parse(options.body);
-      return { ok: true, json: async () => ({ content: [{ type: 'text', text: JSON.stringify({ reply: 'Mainly clear and 24°C.', expression: 'thoughtful' }) }] }) };
+      return { ok: true, json: async () => ({
+        content: [{ type: 'text', text: JSON.stringify({ reply: 'Mainly clear and 24°C.', expression: 'thoughtful' }) }],
+        usage: { input_tokens: 70, output_tokens: 15, cache_creation_input_tokens: 4, cache_read_input_tokens: 3 },
+      }) };
     },
   });
   assert.equal(sent.max_tokens, 300);
   assert.equal(sent.messages.length, 1);
   assert.equal(answer.reply, 'Mainly clear and 24°C.');
+  assert.equal(answer.usageTokens, 92);
   await assert.rejects(askClaude({
     apiKey: 'test-key', model: 'test-model', system: 'Noor', messages: [],
     fetchImpl: async () => ({ ok: true, json: async () => ({ content: [] }) }),

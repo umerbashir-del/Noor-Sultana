@@ -85,8 +85,17 @@ export async function askClaude({ apiKey, model, system, messages, fetchImpl = f
   if (typeof answer.reply !== 'string' || !answer.reply.trim()) {
     throw new ClaudeUnavailable('Claude returned an unreadable response. Please try again.');
   }
+  const reported = result.usage || {};
+  const tokenFields = [reported.input_tokens, reported.output_tokens];
+  const cacheTokens = [reported.cache_creation_input_tokens, reported.cache_read_input_tokens]
+    .map((value) => Number.isSafeInteger(value) && value >= 0 ? value : 0);
+  const usageTokens = tokenFields.every((value) => Number.isSafeInteger(value) && value >= 0)
+    ? tokenFields.reduce((sum, value) => sum + value, 0)
+      + cacheTokens.reduce((sum, value) => sum + value, 0)
+    : null;
   return {
     reply: answer.reply.trim().slice(0, 900),
     expression: answer.expression === 'thoughtful' ? 'thoughtful' : 'welcoming',
+    usageTokens,
   };
 }

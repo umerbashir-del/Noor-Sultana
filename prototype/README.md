@@ -1,6 +1,6 @@
 # Noor flight assistant demo
 
-This is a small local prototype. It uses fictional Cloudline Air CL 204 flight details and sends general passenger chat to Claude. It can check real public weather near Tokyo Haneda and JFK through Open-Meteo, but it does not check real flight, airport-operation, or cabin-service data.
+This is a small prototype with offline launch safeguards. It uses fictional Cloudline Air CL 204 flight details and sends general passenger chat to Claude. It can check real public weather near Tokyo Haneda and JFK through Open-Meteo, but it does not check real flight, airport-operation, or cabin-service data.
 
 ## Passenger knowledge
 
@@ -42,19 +42,37 @@ Weather data: [Open-Meteo](https://open-meteo.com/). Its free API is for non-com
 
 ## Conversation sessions
 
-The server creates a new anonymous passenger session when the page opens. The browser sends only each new message; conversation history is kept in server memory, limited to the most recent six exchanges. The session identifier is an HttpOnly, SameSite cookie. No passenger profile or conversation is saved to SQLite or another persistent store.
+The server creates a new anonymous passenger session when the page opens. The browser sends only each new message; conversation history is kept in server memory, limited to the most recent six exchanges. A separate 30-day visitor cookie keeps daily limits in effect across conversations. Both cookies are HttpOnly and SameSite=Strict; production adds Secure. No passenger profile or conversation text is saved to SQLite or another persistent store.
 
-Click **End conversation** to stop voice activity, clear the screen, invalidate that session on the server, and start a fresh one. Reloading the page also starts a fresh session. Sessions expire after 15 minutes without chat activity or two hours total, whichever comes first. If a session expires while the page is open, Noor clears the conversation and asks you to send the question again. Restarting the server also clears all sessions. This is a local HTTP demo; a deployed version needs HTTPS and a Secure session cookie.
+Click **End conversation** to stop voice activity, clear the screen, invalidate that session on the server, and start a fresh one. Reloading the page also starts a fresh session. Sessions expire after 15 minutes without chat activity or two hours total, whichever comes first. If a session expires while the page is open, Noor clears the conversation and asks you to send the question again. Restarting the server also clears all sessions. Production requires `PUBLIC_ORIGIN` to be HTTPS, binds to `0.0.0.0` by default, accepts POSTs only from that origin, and sends Secure cookies and an HSTS header. The hosting proxy must actually serve HTTPS; with Cloudflare, use Full (strict) to protect the origin connection too.
+
+## Usage limits and monitoring
+
+The server saves only pseudonymous visitor hashes, request categories, counts, and Claude token totals in `data/usage.sqlite` by default. It reserves an estimated token amount before each Claude request, then replaces that estimate with Anthropic's reported input/output usage when available. Uncertain provider outcomes keep their reservation so a timeout cannot create free retries. Default UTC-day limits are 30 Claude requests and 30,000 tokens per browser visitor, with 500 requests and 300,000 tokens overall; speech, transcription, and verification have separate limits in `.env.example`. These are application limits, so also set a Claude workspace spending cap. Clearing cookies can reset one visitor's identity; the overall cap remains. Real user-account limits require an authentication integration.
+
+Usage and error events are logged as structured JSON with route, status, duration, and token counts. Prompts, transcripts, email addresses, cookies, and API keys are excluded. `GET /healthz` returns a minimal health response for a hosting monitor. Visitor usage records are deleted after 30 days. This SQLite ledger and the email scheduler support one server instance; moving to multiple instances requires shared storage and coordination.
+
+## Retention
+
+Microphone audio is processed in memory and not saved. Transcripts are shown in the browser and, when sent, kept only in the in-memory conversation until it ends or expires. Email verification rows are removed after one day; terminal email jobs have addresses and message bodies cleared after 30 days; email event rows are removed after 90 days. The local server runs cleanup automatically. Review hosting logs, backups, and provider retention separately before launch.
+
+## Linux package and Supabase preparation
+
+The repository root has a `Dockerfile` that installs Node, Python, Chatterbox, and faster-whisper, and copies the allowlisted passenger knowledge pages. Build it from the `Noor Sultana` folder, set `PUBLIC_ORIGIN` and secrets as hosting environment variables, and mount persistent storage at `/app/data`. `/healthz` is the health-check path. The image uses the installed package versions from the working Windows environment, but voice speed and GPU support must be measured on the chosen Linux host. Building the image downloads dependencies and models.
+
+`../supabase/migrations/20261011_noor_foundation.sql` prepares private-by-policy email and usage tables plus a deletion function. Enable Supabase Cron and apply `../supabase/cron.sql` to run that function daily. **The live app still uses SQLite.** Moving the email scheduler and usage ledger to Supabase requires an adapter, actual project credentials, and migration tests; do not add multiple app instances before that work is complete. Keep the Supabase secret key server-side.
 
 ## Noor’s voice
 
 Click **Voice off** in the demo to turn on spoken replies. Noor’s next reply is synthesized locally with Chatterbox Turbo using `voice/noor-reference.wav`. Text chat still works if the voice model is unavailable.
 
+Each conversation has its own speech job. Chatterbox processes jobs one at a time to fit the local voice model; a visitor's **Stop** button cancels only that visitor's job. If a job is already generating, the worker restarts before processing the next queued visitor. Voice requests require an active conversation session.
+
 ## Talk to Noor
 
 1. Click **Talk** and allow the browser to use your microphone. Noor requests the browser's echo cancellation, noise suppression, and automatic gain control.
-2. Ask a question, then click **Done**. A local faster-whisper `base.en` model transcribes the recording and sends the transcript to Claude. Noor shows the answer and speaks it. Recording also stops after 30 seconds.
-3. Click **Stop** to stop playback, cancel speech generation, or discard a recording. You can still type and send a question normally.
+2. Ask a question, then click **Done**. A local faster-whisper `base.en` model transcribes the recording and puts the words in the message box. Recording also stops after 30 seconds.
+3. Check and edit the transcript, then click **Send** for Noor to answer and speak. Click **Talk** to record again, or **Stop** to discard the transcript, stop playback, or cancel speech generation. You can still type and send a question normally.
 
 Talk automatically turns Noor's voice on. The microphone is active only between **Talk** and **Done** (or **Stop**). Automatic end-of-turn detection and always-listening are not used in this version.
 

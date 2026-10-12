@@ -20,10 +20,10 @@ export function createSessionStore({ clock = Date.now } = {}) {
   }
 
   return {
-    create() {
+    create(visitorId = null) {
       const now = clock();
       const session = {
-        id: randomBytes(32).toString('hex'), createdAt: now, lastActiveAt: now,
+        id: randomBytes(32).toString('hex'), visitorId, createdAt: now, lastActiveAt: now,
         revision: 0, messages: [],
       };
       sessions.set(session.id, session);

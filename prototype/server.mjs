@@ -11,9 +11,15 @@ import { findKnowledge, knowledgeDocumentId, knowledgeSystemContext, readKnowled
 import { arrivalEmailIntent, createArrivalEmailDraft } from './email-draft.mjs';
 import { createResendProvider } from './email-provider.mjs';
 import { createEmailScheduler, EmailFlowError } from './email-scheduler.mjs';
+import { createVoiceJobQueue, VoiceJobCancelled, VoiceQueueFull } from './voice-jobs.mjs';
+import { allowedOrigin, cookieHeader, createPublicConfig, newVisitorId } from './public-config.mjs';
+import { createUsageStore, estimateClaudeTokens, UsageLimitError, usageLimitsFromEnv } from './usage-store.mjs';
+import { logEvent, safeRoute } from './monitor.mjs';
 
 const root = resolve(fileURLToPath(new URL('.', import.meta.url)));
-const port = Number(process.env.PORT || 4173);
+await loadLocalEnv();
+const config = createPublicConfig();
+const dataDir = process.env.NOOR_DATA_DIR || resolve(root, 'data');
 const maxRequestBytes = 16_000;
 const maxAudioBytes = 8_000_000;
 const maxMessageLength = 500;
@@ -21,12 +27,19 @@ const rateWindowMs = 60_000;
 const rateLimit = 24;
 const requestsByAddress = new Map();
 const sessions = createSessionStore();
-setInterval(() => sessions.prune(), 5 * 60_000).unref();
+const usageStore = createUsageStore({
+  dbPath: process.env.NOOR_USAGE_DB || resolve(dataDir, 'usage.sqlite'),
+  limits: usageLimitsFromEnv(),
+});
+setInterval(() => { sessions.prune(); usageStore.prune(); }, 5 * 60_000).unref();
 const sessionCookieName = 'noor_session';
-const defaultVoicePython = resolve(root, '..', '..', 'chatterboc-demo', '.venv', 'Scripts', 'python.exe');
+const visitorCookieName = 'noor_visitor';
+const visitorCookieSeconds = 30 * 24 * 60 * 60;
+const defaultVoicePython = process.platform === 'win32'
+  ? resolve(root, '..', '..', 'chatterboc-demo', '.venv', 'Scripts', 'python.exe')
+  : '/opt/noor-venv/bin/python';
 let voiceWorker;
 let voiceSequence = 0;
-let voiceOutput = '';
 const voicePending = new Map();
 let asrWorker;
 let asrSequence = 0;
@@ -41,11 +54,10 @@ const publicFiles = new Set([
   'assets/noor-thinking.png',
 ]);
 
-await loadLocalEnv();
 const model = process.env.ANTHROPIC_MODEL || 'claude-haiku-5-5';
 const emailProvider = createResendProvider({ apiKey: process.env.RESEND_API_KEY, from: process.env.NOOR_EMAIL_FROM });
 const emailScheduler = createEmailScheduler({
-  dbPath: process.env.NOOR_EMAIL_DB || resolve(root, 'data', 'email.sqlite'),
+  dbPath: process.env.NOOR_EMAIL_DB || resolve(dataDir, 'email.sqlite'),
   provider: emailProvider,
 });
 const emailTick = setInterval(() => {
@@ -81,12 +93,30 @@ async function loadLocalEnv() {
   }
 }
 
+async function askWithBudget(args, visitorId) {
+  const estimate = estimateClaudeTokens(args);
+  const reservation = usageStore.reserveClaude(visitorId, estimate);
+  try {
+    const answer = await askClaude(args);
+    usageStore.settleClaude(reservation, answer.usageTokens);
+    logEvent('claude_usage', { kind: 'claude', tokens: answer.usageTokens ?? estimate });
+    return { reply: answer.reply, expression: answer.expression };
+  } catch (error) {
+    // A request whose provider outcome is unknown keeps its conservative reservation.
+    usageStore.markUncertain(reservation);
+    logEvent('upstream_error', { kind: 'claude' });
+    throw error;
+  }
+}
+
 function ensureVoiceWorker() {
   if (voiceWorker) return voiceWorker;
   const python = process.env.CHATTERBOX_PYTHON || defaultVoicePython;
   if (!existsSync(python)) throw new Error('Chatterbox Python is unavailable. Set CHATTERBOX_PYTHON in .env.local.');
   const worker = spawn(python, ['-u', resolve(root, 'voice_worker.py')], { cwd: root, stdio: ['pipe', 'pipe', 'pipe'] });
   voiceWorker = worker;
+  let voiceOutput = '';
+  let failed = false;
   worker.stdout.setEncoding('utf8');
   worker.stdout.on('data', (chunk) => {
     voiceOutput += chunk;
@@ -107,13 +137,15 @@ function ensureVoiceWorker() {
   worker.stderr.setEncoding('utf8');
   worker.stderr.on('data', (chunk) => console.error(`[Chatterbox] ${chunk.trimEnd()}`));
   const fail = () => {
+    if (failed) return;
+    failed = true;
     if (voiceWorker === worker) voiceWorker = undefined;
-    voiceOutput = '';
-    for (const pending of voicePending.values()) {
+    for (const [id, pending] of voicePending) {
+      if (pending.worker !== worker) continue;
       clearTimeout(pending.timer);
       pending.reject(new Error('Chatterbox stopped.'));
+      voicePending.delete(id);
     }
-    voicePending.clear();
   };
   worker.on('error', fail);
   worker.on('exit', fail);
@@ -126,10 +158,11 @@ function voiceCommand(payload) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       voicePending.delete(id);
-      reject(new Error('Chatterbox took too long.'));
+      if (voiceWorker === worker) voiceWorker = undefined;
       worker.kill();
+      reject(new Error('Chatterbox took too long.'));
     }, 300_000);
-    voicePending.set(id, { resolve, reject, timer });
+    voicePending.set(id, { resolve, reject, timer, worker });
     worker.stdin.write(JSON.stringify({ id, ...payload }) + '\n', (error) => {
       if (!error) return;
       clearTimeout(timer);
@@ -143,6 +176,11 @@ async function generateSpeech(text) {
   const result = await voiceCommand({ kind: 'speak', text });
   return Buffer.from(result.audio, 'base64');
 }
+
+const voiceJobs = createVoiceJobQueue({
+  run: generateSpeech,
+  cancelActive: () => voiceWorker?.kill(),
+});
 
 function ensureAsrWorker() {
   if (asrWorker) return asrWorker;
@@ -217,12 +255,19 @@ async function handleTranscribe(request, response) {
   if (!checkRateLimit(request.socket.remoteAddress || 'local')) {
     return sendJson(response, 429, { error: 'Please wait a moment before recording again.' });
   }
+  const session = sessionFrom(request);
+  if (!session) return sendJson(response, 401, { error: 'Your conversation has ended. Please start a new one.' });
   if (!/^audio\/(webm|ogg|mp4|wav)/i.test(request.headers['content-type'] || '')) {
     return sendJson(response, 415, { error: 'Unsupported microphone recording format.' });
   }
   let audio;
   try { audio = await readAudio(request); } catch { return sendJson(response, 400, { error: 'Recording is too large or unreadable.' }); }
   if (audio.length < 1000) return sendJson(response, 400, { error: 'Recording was too short. Please try again.' });
+  try { usageStore.recordOperation(session.visitorId, 'transcribe'); }
+  catch (error) {
+    if (error instanceof UsageLimitError) return sendJson(response, 429, { error: error.message });
+    throw error;
+  }
   try {
     const text = await transcribeAudio(audio);
     return sendJson(response, 200, { text });
@@ -232,8 +277,10 @@ async function handleTranscribe(request, response) {
   }
 }
 
-function handleStop(response) {
-  if (voiceWorker && voicePending.size > 0) voiceWorker.kill();
+function handleStop(request, response) {
+  const session = sessionFrom(request);
+  if (!session) return sendJson(response, 401, { error: 'Your conversation has ended. Please start a new one.' });
+  voiceJobs.cancelSession(session.id);
   return sendJson(response, 200, { stopped: true });
 }
 
@@ -241,14 +288,33 @@ async function handleSpeak(request, response) {
   if (!checkRateLimit(request.socket.remoteAddress || 'local')) {
     return sendJson(response, 429, { error: 'Please wait a moment before speaking again.' });
   }
+  const session = sessionFrom(request);
+  if (!session) return sendJson(response, 401, { error: 'Your conversation has ended. Please start a new one.' });
   let body;
   try { body = await readJson(request); } catch { return sendJson(response, 400, { error: 'Please send valid speech text.' }); }
   const text = body?.text;
   if (typeof text !== 'string' || !text.trim() || text.length > 900) {
     return sendJson(response, 400, { error: 'Please send valid speech text.' });
   }
+  try { usageStore.recordOperation(session.visitorId, 'speak'); }
+  catch (error) {
+    if (error instanceof UsageLimitError) return sendJson(response, 429, { error: error.message });
+    throw error;
+  }
+  let job;
   try {
-    const audio = await generateSpeech(text.trim());
+    job = voiceJobs.submit(session.id, text.trim());
+  } catch (error) {
+    if (error instanceof VoiceQueueFull) return sendJson(response, 429, { error: error.message });
+    throw error;
+  }
+  response.on('close', () => {
+    if (!response.writableEnded) job.cancel();
+  });
+  if (response.destroyed) job.cancel();
+  try {
+    const audio = await job.promise;
+    if (response.destroyed) return;
     response.writeHead(200, {
       'content-type': 'audio/wav',
       'content-length': audio.length,
@@ -256,7 +322,9 @@ async function handleSpeak(request, response) {
       'x-content-type-options': 'nosniff',
     });
     response.end(audio);
-  } catch {
+  } catch (error) {
+    if (response.destroyed) return;
+    if (error instanceof VoiceJobCancelled) return sendJson(response, 409, { error: 'Speech was stopped.' });
     return sendJson(response, 503, { error: 'Noor’s voice is unavailable. Check the server window for details.' });
   }
 }
@@ -271,19 +339,22 @@ function sendJson(response, status, payload) {
   response.end(JSON.stringify(payload));
 }
 
-function sessionIdFrom(request) {
+function cookieValueFrom(request, name) {
   const cookie = (request.headers.cookie || '').split(';').map((part) => part.trim())
-    .find((part) => part.startsWith(`${sessionCookieName}=`));
-  const id = cookie?.slice(sessionCookieName.length + 1);
+    .find((part) => part.startsWith(`${name}=`));
+  const id = cookie?.slice(name.length + 1);
   return /^[a-f0-9]{64}$/.test(id || '') ? id : null;
 }
 
-function setSessionCookie(response, id) {
-  response.setHeader('set-cookie', `${sessionCookieName}=${id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(absoluteSessionMs / 1000)}`);
+function sessionIdFrom(request) { return cookieValueFrom(request, sessionCookieName); }
+function visitorIdFrom(request) { return cookieValueFrom(request, visitorCookieName); }
+function sessionFrom(request) {
+  const session = sessions.get(sessionIdFrom(request));
+  return session?.visitorId === visitorIdFrom(request) ? session : null;
 }
 
 function clearSessionCookie(response) {
-  response.setHeader('set-cookie', `${sessionCookieName}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`);
+  response.setHeader('set-cookie', cookieHeader(sessionCookieName, '', 0, config.secureCookies));
 }
 
 function handleStartSession(request, response) {
@@ -291,15 +362,25 @@ function handleStartSession(request, response) {
     return sendJson(response, 429, { error: 'Please wait a moment before starting another conversation.' });
   }
   const previousId = sessionIdFrom(request);
-  if (previousId) sessions.end(previousId);
-  const session = sessions.create();
-  setSessionCookie(response, session.id);
+  const visitorId = visitorIdFrom(request) || newVisitorId();
+  if (previousId && sessionFrom(request)) {
+    voiceJobs.cancelSession(previousId);
+    sessions.end(previousId);
+  }
+  const session = sessions.create(visitorId);
+  response.setHeader('set-cookie', [
+    cookieHeader(sessionCookieName, session.id, Math.floor(absoluteSessionMs / 1000), config.secureCookies),
+    cookieHeader(visitorCookieName, visitorId, visitorCookieSeconds, config.secureCookies),
+  ]);
   return sendJson(response, 200, { started: true });
 }
 
 function handleEndSession(request, response) {
-  const id = sessionIdFrom(request);
-  if (id) sessions.end(id);
+  const session = sessionFrom(request);
+  if (session) {
+    voiceJobs.cancelSession(session.id);
+    sessions.end(session.id);
+  }
   clearSessionCookie(response);
   return sendJson(response, 200, { ended: true });
 }
@@ -338,7 +419,7 @@ async function handleChat(request, response) {
   if (!checkRateLimit(request.socket.remoteAddress || 'local')) {
     return sendJson(response, 429, { error: 'Please wait a moment before sending another message.' });
   }
-  const session = sessions.get(sessionIdFrom(request));
+  const session = sessionFrom(request);
   if (!session) return sendJson(response, 401, { error: 'Your conversation has ended. Please start a new one.' });
   let body;
   try {
@@ -389,6 +470,7 @@ async function handleChat(request, response) {
     }
     const answer = await answerWeather({
       weather, message, apiKey: process.env.ANTHROPIC_API_KEY, model, systemPrompt,
+      ask: (args) => askWithBudget(args, session.visitorId),
     });
     return finishChat(response, session, revision, message, {
       ...answer, weather,
@@ -406,13 +488,14 @@ async function handleChat(request, response) {
   }
   let answer;
   try {
-    answer = await askClaude({
+    answer = await askWithBudget({
       apiKey: process.env.ANTHROPIC_API_KEY,
       model,
       system: knowledge ? `${systemPrompt}\n\n${knowledgeSystemContext(knowledge)}` : systemPrompt,
       messages: sessions.context(session, message),
-    });
+    }, session.visitorId);
   } catch (error) {
+    if (error instanceof UsageLimitError) return sendJson(response, 429, { error: error.message });
     return sendJson(response, 502, {
       error: error instanceof ClaudeUnavailable ? error.message : 'Claude could not answer just now. Please try again.',
     });
@@ -450,7 +533,7 @@ async function handleEmail(request, response, url) {
   if (!checkRateLimit(request.socket.remoteAddress || 'local')) {
     return sendJson(response, 429, { error: 'Please wait a moment before trying again.' });
   }
-  const session = sessions.get(sessionIdFrom(request));
+  const session = sessionFrom(request);
   if (!session) return sendJson(response, 401, { error: 'Your conversation has ended. Please start a new one.' });
   try {
     if (request.method === 'GET' && url.pathname === '/api/email/jobs') {
@@ -458,6 +541,7 @@ async function handleEmail(request, response, url) {
     }
     const body = await readJson(request);
     if (url.pathname === '/api/email/verification') {
+      usageStore.recordOperation(session.visitorId, 'verification');
       return sendJson(response, 200, await emailScheduler.requestVerification(session.id, body?.email));
     }
     if (url.pathname === '/api/email/verify') {
@@ -475,6 +559,7 @@ async function handleEmail(request, response, url) {
     }
     return sendJson(response, 404, { error: 'Not found.' });
   } catch (error) {
+    if (error instanceof UsageLimitError) return sendJson(response, 429, { error: error.message });
     if (error instanceof EmailFlowError) return sendJson(response, error.status, { error: error.message });
     if (error instanceof SyntaxError || error?.message === 'Request is too large.') {
       return sendJson(response, 400, { error: 'Please send a valid request.' });
@@ -542,28 +627,39 @@ async function serveKnowledge(pathname, response) {
 }
 
 export const server = createServer(async (request, response) => {
-  const url = new URL(request.url || '/', `http://${request.headers.host || '127.0.0.1'}`);
-  if (request.method === 'POST' && request.headers.origin
-    && ![`http://127.0.0.1:${port}`, `http://localhost:${port}`].includes(request.headers.origin)) {
-    return sendJson(response, 403, { error: 'Request origin is not allowed.' });
+  const started = Date.now();
+  const route = safeRoute((request.url || '/').split('?')[0]);
+  response.on('finish', () => logEvent('request', { route, status: response.statusCode, durationMs: Date.now() - started }));
+  if (config.production) response.setHeader('strict-transport-security', 'max-age=31536000');
+  try {
+    const url = new URL(request.url || '/', 'http://noor.local');
+    if (request.method === 'GET' && url.pathname === '/healthz') return sendJson(response, 200, { status: 'ok' });
+    if (request.method === 'POST' && !allowedOrigin(request.headers.origin, config)) {
+      return sendJson(response, 403, { error: 'Request origin is not allowed.' });
+    }
+    if (request.method === 'POST' && url.pathname === '/api/session') return handleStartSession(request, response);
+    if (request.method === 'POST' && url.pathname === '/api/session/end') return handleEndSession(request, response);
+    if (request.method === 'POST' && url.pathname === '/api/chat') return await handleChat(request, response);
+    if (url.pathname.startsWith('/api/email/') && (request.method === 'POST' || request.method === 'GET')) {
+      return await handleEmail(request, response, url);
+    }
+    if (request.method === 'GET' && url.pathname === '/api/weather') return await handleWeather(request, response, url);
+    if (request.method === 'POST' && url.pathname === '/api/speak') return await handleSpeak(request, response);
+    if (request.method === 'POST' && url.pathname === '/api/transcribe') return await handleTranscribe(request, response);
+    if (request.method === 'POST' && url.pathname === '/api/stop') return handleStop(request, response);
+    if (request.method === 'GET' && url.pathname.startsWith('/knowledge/')) return await serveKnowledge(url.pathname, response);
+    if (request.method === 'GET' && !url.pathname.startsWith('/api/')) return await serveStatic(url.pathname, response);
+    return sendJson(response, 404, { error: 'Not found.' });
+  } catch (error) {
+    logEvent('server_error', { route, kind: error?.name || 'Error' });
+    if (!response.headersSent && !response.destroyed) return sendJson(response, 500, { error: 'Noor is unavailable. Please try again.' });
+    if (!response.destroyed) response.end();
   }
-  if (request.method === 'POST' && url.pathname === '/api/session') return handleStartSession(request, response);
-  if (request.method === 'POST' && url.pathname === '/api/session/end') return handleEndSession(request, response);
-  if (request.method === 'POST' && url.pathname === '/api/chat') return handleChat(request, response);
-  if (url.pathname.startsWith('/api/email/') && (request.method === 'POST' || request.method === 'GET')) {
-    return handleEmail(request, response, url);
-  }
-  if (request.method === 'GET' && url.pathname === '/api/weather') return handleWeather(request, response, url);
-  if (request.method === 'POST' && url.pathname === '/api/speak') return handleSpeak(request, response);
-  if (request.method === 'POST' && url.pathname === '/api/transcribe') return handleTranscribe(request, response);
-  if (request.method === 'POST' && url.pathname === '/api/stop') return handleStop(response);
-  if (request.method === 'GET' && url.pathname.startsWith('/knowledge/')) return serveKnowledge(url.pathname, response);
-  if (request.method === 'GET' && !url.pathname.startsWith('/api/')) return serveStatic(url.pathname, response);
-  return sendJson(response, 404, { error: 'Not found.' });
-}).listen(port, '127.0.0.1', () => {
-  console.log(`Noor demo running at http://127.0.0.1:${port}`);
+}).listen(config.port, config.host, () => {
+  console.log(`Noor demo listening on ${config.host}:${server.address().port}`);
   if (!process.env.ANTHROPIC_API_KEY) console.log('Add ANTHROPIC_API_KEY to prototype/.env.local and restart to enable Claude.');
   if (!emailProvider) console.log('Add RESEND_API_KEY and NOOR_EMAIL_FROM to prototype/.env.local to enable email verification and scheduling.');
+  if (process.env.NOOR_SKIP_VOICE_WARMUP === '1') return;
   try {
     voiceCommand({ kind: 'warmup' }).then(
       () => console.log('Noor’s voice is ready.'),
