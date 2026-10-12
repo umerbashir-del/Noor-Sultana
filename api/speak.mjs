@@ -1,12 +1,26 @@
 import { readFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { sessionIdFrom } from '../lib/vercel-session.mjs';
-import { reserveStoredVoice, supabaseEnabled } from '../lib/supabase-store.mjs';
+import { releaseStoredVoice, reserveStoredVoice, supabaseEnabled } from '../lib/supabase-store.mjs';
 import { json, sameOrigin } from '../lib/vercel-shared.mjs';
 
 const predictionEndpoint = 'https://api.replicate.com/v1/models/resemble-ai/chatterbox-turbo/predictions';
 const maxAudioBytes = 5_000_000;
 let hopeReferencePromise;
+
+class VoiceProviderRateLimit extends Error {
+  constructor(retryAfterSeconds) {
+    super('Voice provider rate limited this request');
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
+function retryAfterSeconds(header) {
+  const numeric = Number(header);
+  const seconds = header && Number.isFinite(numeric) ? numeric : (Date.parse(header) - Date.now()) / 1000;
+  return Number.isFinite(seconds) ? Math.max(1, Math.min(300, Math.ceil(seconds))) : 30;
+}
 
 function hopeReference() {
   hopeReferencePromise ||= readFile(new URL('../prototype/voice/noor-reference.wav', import.meta.url))
@@ -76,13 +90,24 @@ function available() {
 }
 
 async function predictionRequest(url, options = {}, signal) {
-  const response = await fetch(url, {
-    ...options,
-    headers: { authorization: `Bearer ${process.env.REPLICATE_API_TOKEN}`, ...options.headers },
-    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(45_000)]) : AbortSignal.timeout(45_000),
-  });
-  if (!response.ok) throw new Error(`Voice provider returned ${response.status}`);
-  return response.json();
+  const isCreate = url === predictionEndpoint && options.method === 'POST';
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const response = await fetch(url, {
+      ...options,
+      headers: { authorization: `Bearer ${process.env.REPLICATE_API_TOKEN}`, ...options.headers },
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(45_000)]) : AbortSignal.timeout(45_000),
+    });
+    if (response.status === 429) {
+      const seconds = retryAfterSeconds(response.headers.get('retry-after'));
+      if (isCreate && attempt === 0 && seconds <= 3) {
+        await delay(seconds * 1000, undefined, { signal });
+        continue;
+      }
+      throw new VoiceProviderRateLimit(seconds);
+    }
+    if (!response.ok) throw new Error(`Voice provider returned ${response.status}`);
+    return response.json();
+  }
 }
 
 export async function GET() {
@@ -104,8 +129,9 @@ export async function POST(request, context) {
   }
   const sessionId = sessionIdFrom(request);
   if (!sessionId) return json({ error: 'Conversation expired. Please start a new one.' }, 401);
+  const reservationId = randomUUID();
   let reserved;
-  try { reserved = await reserveStoredVoice(sessionId, text); }
+  try { reserved = await reserveStoredVoice(sessionId, text, reservationId); }
   catch { return json({ error: 'Voice limit check is unavailable.' }, 503); }
   if (reserved === 'limit') return json({ error: 'The demo voice has reached its usage limit. Text chat still works.' }, 429);
   if (reserved !== 'ok') return json({ error: 'This reply is no longer available to speak.' }, 409);
@@ -124,7 +150,7 @@ export async function POST(request, context) {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'cancel-after': '60s' },
       body: JSON.stringify({ input: { text, reference_audio: referenceAudio } }),
-    });
+    }, request.signal);
     if (typeof prediction.id === 'string' && /^[a-z0-9]+$/.test(prediction.id)) predictionId = prediction.id;
     predictionRunning = ['starting', 'processing'].includes(prediction.status);
     if (request.signal.aborted) throw new Error('Voice request stopped.');
@@ -163,6 +189,15 @@ export async function POST(request, context) {
         await cancellation;
       }
       return new Response(null, { status: 204 });
+    }
+    if (error instanceof VoiceProviderRateLimit) {
+      if (stage === 'prediction_create') {
+        try { await releaseStoredVoice(sessionId, reservationId); }
+        catch (releaseError) { console.error('[Chatterbox] voice reservation release failed:', releaseError?.message); }
+      }
+      console.warn('[Chatterbox]', stage, 'provider rate limited request', error.retryAfterSeconds);
+      return json({ error: `Voice is temporarily busy. Please try again in about ${error.retryAfterSeconds} seconds.` },
+        503, { 'retry-after': String(error.retryAfterSeconds) });
     }
     console.error('[Chatterbox]', stage, error?.message);
     return json({ error: 'Chatterbox could not speak this reply. Please try again.' }, 502);

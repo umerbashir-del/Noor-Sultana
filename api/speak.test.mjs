@@ -73,9 +73,10 @@ test('voice checks session reply and usage before generating Chatterbox audio', 
   const calls = [];
   globalThis.fetch = async (url, options) => {
     calls.push(String(url));
-    if (String(url).endsWith('/rpc/noor_reserve_demo_voice')) {
+    if (String(url).endsWith('/rpc/noor_reserve_demo_voice_v2')) {
       assert.equal(JSON.parse(options.body).p_id, id);
       assert.equal(JSON.parse(options.body).p_text, text);
+      assert.match(JSON.parse(options.body).p_reservation_id, /^[0-9a-f-]{36}$/);
       return Response.json('ok');
     }
     if (String(url).endsWith('/models/resemble-ai/chatterbox-turbo/predictions')) {
@@ -112,12 +113,77 @@ test('voice limit blocks the provider call', async () => {
   let calls = 0;
   globalThis.fetch = async (url) => {
     calls++;
-    assert.ok(String(url).endsWith('/rpc/noor_reserve_demo_voice'));
+    assert.ok(String(url).endsWith('/rpc/noor_reserve_demo_voice_v2'));
     return Response.json('limit');
   };
   const response = await POST(request(sessionIdCookie(randomUUID()).split(';')[0], 'Hello.'));
   assert.equal(response.status, 429);
   assert.equal(calls, 1);
+});
+
+test('provider 429 returns a wait time and refunds the same voice reservation', async () => {
+  process.env.NOOR_VOICE_ENABLED = 'true';
+  process.env.REPLICATE_API_TOKEN = 'test-only-token';
+  const id = randomUUID();
+  const cookie = sessionIdCookie(id).split(';')[0];
+  let reservationId;
+  let providerCalls = 0;
+  let releases = 0;
+  globalThis.fetch = async (url, options) => {
+    const destination = String(url);
+    if (destination.endsWith('/rpc/noor_reserve_demo_voice_v2')) {
+      reservationId = JSON.parse(options.body).p_reservation_id;
+      return Response.json('ok');
+    }
+    if (destination.endsWith('/models/resemble-ai/chatterbox-turbo/predictions')) {
+      providerCalls += 1;
+      return Response.json({ detail: 'Request was throttled.' }, {
+        status: 429, headers: { 'retry-after': '30' },
+      });
+    }
+    if (destination.endsWith('/rpc/noor_release_demo_voice')) {
+      const body = JSON.parse(options.body);
+      assert.equal(body.p_id, id);
+      assert.equal(body.p_reservation_id, reservationId);
+      releases += 1;
+      return Response.json(true);
+    }
+    throw new Error(`Unexpected destination: ${destination}`);
+  };
+  const response = await POST(request(cookie, 'Welcome aboard.'));
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get('retry-after'), '30');
+  assert.match((await response.json()).error, /try again in about 30 seconds/i);
+  assert.equal(providerCalls, 1);
+  assert.equal(releases, 1);
+});
+
+test('short provider throttle retries once without a second voice reservation', async () => {
+  process.env.NOOR_VOICE_ENABLED = 'true';
+  process.env.REPLICATE_API_TOKEN = 'test-only-token';
+  const cookie = sessionIdCookie(randomUUID()).split(';')[0];
+  const wav = new Uint8Array(floatWav([0, 0.5, -0.5]));
+  let providerCalls = 0;
+  let reservations = 0;
+  globalThis.fetch = async (url) => {
+    const destination = String(url);
+    if (destination.endsWith('/rpc/noor_reserve_demo_voice_v2')) {
+      reservations += 1;
+      return Response.json('ok');
+    }
+    if (destination.endsWith('/models/resemble-ai/chatterbox-turbo/predictions')) {
+      providerCalls += 1;
+      return providerCalls === 1
+        ? Response.json({}, { status: 429, headers: { 'retry-after': '1' } })
+        : Response.json({ status: 'succeeded', output: 'https://replicate.delivery/voice.wav' });
+    }
+    if (destination === 'https://replicate.delivery/voice.wav') return new Response(wav);
+    throw new Error(`Unexpected destination: ${destination}`);
+  };
+  const response = await POST(request(cookie, 'Welcome aboard.'));
+  assert.equal(response.status, 200);
+  assert.equal(providerCalls, 2);
+  assert.equal(reservations, 1);
 });
 
 test('interrupting speech cancels the active provider prediction', async () => {
@@ -133,7 +199,7 @@ test('interrupting speech cancels the active provider prediction', async () => {
   globalThis.fetch = async (url) => {
     const destination = String(url);
     calls.push(destination);
-    if (destination.endsWith('/rpc/noor_reserve_demo_voice')) return Response.json('ok');
+    if (destination.endsWith('/rpc/noor_reserve_demo_voice_v2')) return Response.json('ok');
     if (destination.endsWith('/models/resemble-ai/chatterbox-turbo/predictions')) {
       createStarted();
       return new Promise((resolve) => { releaseCreate = resolve; });
@@ -168,7 +234,7 @@ test('interrupting before the provider returns an ID still cancels its predictio
   globalThis.fetch = async (url) => {
     const destination = String(url);
     calls.push(destination);
-    if (destination.endsWith('/rpc/noor_reserve_demo_voice')) return Response.json('ok');
+    if (destination.endsWith('/rpc/noor_reserve_demo_voice_v2')) return Response.json('ok');
     if (destination.endsWith('/models/resemble-ai/chatterbox-turbo/predictions')) {
       createStarted();
       return new Promise((resolve) => { releaseCreate = resolve; });
@@ -197,7 +263,7 @@ test('asynchronous voice prediction is polled until audio is ready', async () =>
   globalThis.fetch = async (url) => {
     const destination = String(url);
     calls.push(destination);
-    if (destination.endsWith('/rpc/noor_reserve_demo_voice')) return Response.json('ok');
+    if (destination.endsWith('/rpc/noor_reserve_demo_voice_v2')) return Response.json('ok');
     if (destination.endsWith('/models/resemble-ai/chatterbox-turbo/predictions')) {
       return Response.json({ id: 'abc123', status: 'starting' });
     }
