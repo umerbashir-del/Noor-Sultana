@@ -25,7 +25,7 @@ test('gives Claude only the checked weather fields and current question', async 
   assert.match(request.system, /24/);
   assert.match(request.system, /fictional sample arrival/);
   assert.doesNotMatch(request.system, /never send this/);
-  assert.equal(answer.sourceLabel, 'Claude · Open-Meteo weather · Fictional flight');
+  assert.equal(answer.sourceLabel, 'Claude · Open-Meteo forecast · Fictional arrival time');
 });
 
 test('uses the checked factual reply when Claude is absent or fails', async () => {
@@ -34,7 +34,7 @@ test('uses the checked factual reply when Claude is absent or fails', async () =
     ask: async () => { throw new ClaudeUnavailable('Provider unavailable'); } });
   assert.equal(noKey.reply, failed.reply);
   assert.match(failed.reply, /24°C/);
-  assert.equal(failed.sourceLabel, 'Open-Meteo weather · Fictional flight');
+  assert.equal(failed.sourceLabel, 'Open-Meteo forecast · Fictional arrival time');
   const wrongFacts = await answerWeather({ weather, message: 'Weather?', apiKey: 'test-key', systemPrompt: 'Noor',
     ask: async () => ({ reply: 'It will be rainy and 30°C.', expression: 'thoughtful' }) });
   assert.equal(wrongFacts.reply, noKey.reply);
@@ -62,4 +62,12 @@ test('sends a bounded Claude request and checks its reply', async () => {
     apiKey: 'test-key', model: 'test-model', system: 'Noor', messages: [],
     fetchImpl: async () => ({ ok: true, json: async () => ({ content: [] }) }),
   }), ClaudeUnavailable);
+});
+
+test('shows only the answer from a fenced response and rejects malformed JSON', async () => {
+  const args = { apiKey: 'test-key', model: 'test-model', system: 'Noor', messages: [] };
+  const response = (text) => async () => ({ ok: true, json: async () => ({ content: [{ type: 'text', text }] }) });
+  const good = await askClaude({ ...args, fetchImpl: response('```json\n{"reply":"Boarding begins at 8:00.","expression":"thoughtful"}\n```') });
+  assert.equal(good.reply, 'Boarding begins at 8:00.');
+  await assert.rejects(askClaude({ ...args, fetchImpl: response('{"reply": "Boarding begins at 8:00."') }), ClaudeUnavailable);
 });

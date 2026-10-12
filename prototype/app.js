@@ -8,14 +8,21 @@ const sourceLine = document.querySelector('#sourceLine');
 const knowledgeSources = document.querySelector('#knowledgeSources');
 const endConversationButton = document.querySelector('#endConversationButton');
 const sessionStatus = document.querySelector('#sessionStatus');
+const localDemoLink = document.querySelector('#localDemoLink');
+const boardingTimeButton = document.querySelector('#boardingTimeButton');
+const baggageGuidanceButton = document.querySelector('#baggageGuidanceButton');
+const weatherAvailabilityButton = document.querySelector('#weatherAvailabilityButton');
+const arrivalNoteButton = document.querySelector('#arrivalNoteButton');
 const weatherNowButton = document.querySelector('#weatherNowButton');
 const weatherArrivalButton = document.querySelector('#weatherArrivalButton');
+const otherWeatherButton = document.querySelector('#otherWeatherButton');
 const arrivalEmailButton = document.querySelector('#arrivalEmailButton');
 const weatherCard = document.querySelector('#weatherCard');
 const weatherTitle = document.querySelector('#weatherTitle');
 const weatherSummary = document.querySelector('#weatherSummary');
 const weatherTimes = document.querySelector('#weatherTimes');
 const weatherStatus = document.querySelector('#weatherStatus');
+const placeSource = document.querySelector('#placeSource');
 const emailCard = document.querySelector('#emailCard');
 const emailRecipient = document.querySelector('#emailRecipient');
 const sendEmailCodeButton = document.querySelector('#sendEmailCodeButton');
@@ -41,19 +48,28 @@ const noor = document.querySelector('#noorWrap');
 const flightCard = document.querySelector('#flightCard');
 const flightInfoButton = document.querySelector('#flightInfoButton');
 const voiceToggle = document.querySelector('#voiceToggle');
+const playReplyButton = document.querySelector('#playReplyButton');
 const voiceStatus = document.querySelector('#voiceStatus');
 const talkButton = document.querySelector('#talkButton');
 const doneButton = document.querySelector('#doneButton');
 const stopButton = document.querySelector('#stopButton');
 const micStatus = document.querySelector('#micStatus');
+const micDeviceControls = document.querySelector('#micDeviceControls');
+const micDeviceSelect = document.querySelector('#micDeviceSelect');
+const playRecordingButton = document.querySelector('#playRecordingButton');
 const transcriptReview = document.querySelector('#transcriptReview');
 const vercelPreview = document.documentElement.dataset.vercelPreview === 'true';
+const BrowserSpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 if (vercelPreview) {
   arrivalEmailButton.hidden = true;
-  voiceToggle.closest('.voice-controls').hidden = true;
-  talkButton.closest('.mic-controls').hidden = true;
+  micDeviceControls.hidden = true;
   voiceToggle.disabled = true;
+  voiceStatus.textContent = 'Checking Chatterbox voice…';
+  if (!BrowserSpeechRecognition) {
+    talkButton.closest('.mic-controls').hidden = true;
+    micStatus.textContent = 'Microphone questions need a browser with speech recognition. You can still type.';
+  }
 }
 
 const conversation = [];
@@ -64,6 +80,7 @@ let idleDeadline = 0;
 let absoluteDeadline = 0;
 const voiceAudio = new Audio();
 let voiceEnabled = false;
+let voiceAvailable = !vercelPreview;
 let voiceRequest;
 let voiceUrl;
 let voiceGeneration = 0;
@@ -72,7 +89,10 @@ let chatSequence = 0;
 let pendingUserMessage;
 let transcribeRequest;
 let recorder;
+let browserRecognition;
 let micStream;
+const recordedAudio = new Audio();
+let recordedAudioUrl;
 let discardRecording = false;
 let recordTimeout;
 let micSequence = 0;
@@ -93,6 +113,48 @@ function stopSpeech() {
   voiceAudio.load();
   if (voiceUrl) URL.revokeObjectURL(voiceUrl);
   voiceUrl = undefined;
+  playReplyButton.hidden = true;
+}
+
+function clearRecordingPreview() {
+  recordedAudio.pause();
+  recordedAudio.removeAttribute('src');
+  recordedAudio.load();
+  if (recordedAudioUrl) URL.revokeObjectURL(recordedAudioUrl);
+  recordedAudioUrl = undefined;
+  playRecordingButton.hidden = true;
+}
+
+function keepRecordingPreview(blob) {
+  clearRecordingPreview();
+  recordedAudioUrl = URL.createObjectURL(blob);
+  recordedAudio.src = recordedAudioUrl;
+  playRecordingButton.hidden = false;
+}
+
+playRecordingButton.addEventListener('click', async () => {
+  try {
+    recordedAudio.currentTime = 0;
+    await recordedAudio.play();
+    micStatus.textContent = 'Playing what your microphone recorded…';
+  } catch {
+    micStatus.textContent = 'This browser could not play the recording.';
+  }
+});
+recordedAudio.addEventListener('ended', () => {
+  micStatus.textContent = 'Recording finished. If it was silent, choose another microphone and try Talk again.';
+});
+
+async function listMicrophones(stream) {
+  try {
+    const devices = (await navigator.mediaDevices.enumerateDevices()).filter((device) => device.kind === 'audioinput');
+    const selected = stream.getAudioTracks()[0]?.getSettings().deviceId || micDeviceSelect.value;
+    micDeviceSelect.replaceChildren(new Option('Default microphone', ''));
+    devices.forEach((device, index) => {
+      micDeviceSelect.add(new Option(device.label || `Microphone ${index + 1}`, device.deviceId));
+    });
+    if (devices.some((device) => device.deviceId === selected)) micDeviceSelect.value = selected;
+  } catch { /* Device names may be unavailable in this browser. */ }
 }
 
 async function cancelSynthesis() {
@@ -102,6 +164,10 @@ async function cancelSynthesis() {
 async function speakReply(text) {
   stopSpeech();
   if (!voiceEnabled) return;
+  if (vercelPreview && text.length > 500) {
+    voiceStatus.textContent = 'That reply is too long for the demo voice. You can read it above.';
+    return;
+  }
   const generation = voiceGeneration;
   const controller = new AbortController();
   voiceRequest = controller;
@@ -113,17 +179,24 @@ async function speakReply(text) {
       body: JSON.stringify({ text }),
       signal: controller.signal,
     });
-    if (!response.ok) throw new Error('Voice unavailable');
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || 'Voice unavailable');
+    }
     const audio = await response.blob();
     if (generation !== voiceGeneration || !voiceEnabled) return;
     voiceRequest = undefined;
     voiceUrl = URL.createObjectURL(audio);
     voiceAudio.src = voiceUrl;
     voiceStatus.textContent = 'Noor is speaking. Press Stop to interrupt.';
-    await voiceAudio.play();
+    try { await voiceAudio.play(); }
+    catch {
+      playReplyButton.hidden = false;
+      voiceStatus.textContent = 'Audio is ready. Press Play reply to hear Noor.';
+    }
   } catch (error) {
     if (error.name !== 'AbortError' && generation === voiceGeneration) {
-      voiceStatus.textContent = 'Voice unavailable. Check the server window or try again.';
+      voiceStatus.textContent = vercelPreview ? error.message : 'Voice unavailable. Check the server window or try again.';
     }
   } finally {
     if (voiceRequest === controller) voiceRequest = undefined;
@@ -134,9 +207,19 @@ voiceAudio.addEventListener('ended', () => {
   if (voiceUrl) URL.revokeObjectURL(voiceUrl);
   voiceUrl = undefined;
   voiceStatus.textContent = 'Voice on';
+  playReplyButton.hidden = true;
+});
+
+playReplyButton.addEventListener('click', async () => {
+  try {
+    await voiceAudio.play();
+    playReplyButton.hidden = true;
+    voiceStatus.textContent = 'Noor is speaking. Press Stop to interrupt.';
+  } catch { voiceStatus.textContent = 'Your browser could not play this audio.'; }
 });
 
 function setVoiceEnabled(enabled, replay = true) {
+  if (enabled && !voiceAvailable) return;
   voiceEnabled = enabled;
   voiceToggle.setAttribute('aria-pressed', String(enabled));
   voiceToggle.textContent = enabled ? '🔊 Voice on' : '🔇 Voice off';
@@ -151,6 +234,19 @@ function setVoiceEnabled(enabled, replay = true) {
 }
 
 voiceToggle.addEventListener('click', () => setVoiceEnabled(!voiceEnabled));
+
+async function loadVoiceAvailability() {
+  if (!vercelPreview) return;
+  try {
+    const response = await fetch('/api/speak');
+    const config = await response.json();
+    voiceAvailable = response.ok && config.available === true;
+  } catch { voiceAvailable = false; }
+  voiceToggle.disabled = !voiceAvailable;
+  voiceStatus.textContent = voiceAvailable
+    ? 'Turn on Chatterbox voice to hear Noor’s replies.'
+    : 'Chatterbox voice is not connected yet. You can still talk and read Noor’s replies.';
+}
 
 function setPose(pose) {
   noor.dataset.pose = pose === 'thoughtful' ? 'thinking' : 'welcome';
@@ -174,14 +270,30 @@ function scheduleSessionEnd() {
   sessionTimer = window.setTimeout(() => void endConversation(), Math.max(0, Math.min(idleDeadline, absoluteDeadline) - Date.now()));
 }
 
+function canTalk() {
+  return sessionReady && (!vercelPreview || Boolean(BrowserSpeechRecognition));
+}
+
 async function startSession(successMessage = 'Conversation ready. End it to clear this screen.') {
+  if (window.location.protocol === 'file:') {
+    sessionStatus.textContent = 'Open the local demo through Noor’s server to type or talk.';
+    localDemoLink.hidden = false;
+    voiceToggle.disabled = true;
+    voiceStatus.textContent = 'Voice needs Noor’s server too.';
+    return;
+  }
   sessionReady = false;
   clearTimeout(sessionTimer);
   input.disabled = true;
   sendButton.disabled = true;
+  boardingTimeButton.disabled = true;
+  baggageGuidanceButton.disabled = true;
+  weatherAvailabilityButton.disabled = true;
+  arrivalNoteButton.disabled = true;
   talkButton.disabled = true;
   weatherNowButton.disabled = true;
   weatherArrivalButton.disabled = true;
+  otherWeatherButton.disabled = true;
   arrivalEmailButton.disabled = true;
   endConversationButton.disabled = true;
   sessionStatus.textContent = 'Starting conversation…';
@@ -194,9 +306,14 @@ async function startSession(successMessage = 'Conversation ready. End it to clea
     scheduleSessionEnd();
     input.disabled = false;
     sendButton.disabled = false;
-    talkButton.disabled = vercelPreview || !sessionReady;
+    boardingTimeButton.disabled = false;
+    baggageGuidanceButton.disabled = false;
+    weatherAvailabilityButton.disabled = false;
+    arrivalNoteButton.disabled = false;
+    talkButton.disabled = !canTalk();
     weatherNowButton.disabled = false;
     weatherArrivalButton.disabled = false;
+    otherWeatherButton.disabled = false;
     arrivalEmailButton.disabled = vercelPreview;
     endConversationButton.disabled = false;
     endConversationButton.textContent = 'End conversation';
@@ -209,6 +326,7 @@ async function startSession(successMessage = 'Conversation ready. End it to clea
 }
 
 function clearConversationDisplay() {
+  clearRecordingPreview();
   conversation.length = 0;
   pendingUserMessage = undefined;
   input.value = '';
@@ -225,7 +343,9 @@ function clearConversationDisplay() {
   setPose('welcome');
   noor.removeAttribute('aria-busy');
   micStatus.textContent = 'Press Talk to ask Noor a question.';
-  voiceStatus.textContent = voiceEnabled ? 'Voice on' : 'Turn on voice to hear Noor’s replies.';
+  voiceStatus.textContent = voiceEnabled ? 'Voice on' : voiceAvailable
+    ? 'Turn on voice to hear Noor’s replies.'
+    : 'Chatterbox voice is not connected yet. You can still talk and read Noor’s replies.';
 }
 
 function clearEmailDraft() {
@@ -446,7 +566,9 @@ function renderWeather(weather) {
   weatherTitle.textContent = weather.location;
   weatherSummary.textContent = `${weather.condition} · ${weather.temperatureC}°C${weather.kind === 'arrival' ? ` · ${weather.precipitationProbability}% chance of precipitation` : ''}`;
   weatherTimes.textContent = `${weather.kind === 'arrival' ? 'Forecast for' : 'Conditions for'} ${weatherTime(weather.validAt, weather.timeZone)} · Retrieved ${weatherTime(weather.fetchedAt, weather.timeZone)}`;
-  weatherStatus.textContent = weather.kind === 'arrival' ? 'Arrival time comes from the fictional demo flight.' : 'Current model conditions near the airport.';
+  weatherStatus.textContent = weather.kind === 'arrival' ? 'Arrival time comes from the fictional demo flight.'
+    : weather.city ? 'Current model conditions near the named place.' : 'Current model conditions near the airport.';
+  placeSource.hidden = !weather.city;
 }
 
 function renderKnowledgeSources(sources) {
@@ -465,8 +587,17 @@ function renderKnowledgeSources(sources) {
   if (!knowledgeSources.childElementCount) knowledgeSources.hidden = true;
 }
 
+boardingTimeButton.addEventListener('click', () => void sendMessage('What time does this sample flight board?'));
+baggageGuidanceButton.addEventListener('click', () => void sendMessage('What general guidance do you have about carry-on and checked baggage?'));
+weatherAvailabilityButton.addEventListener('click', () => void sendMessage('What weather information can you check?'));
+arrivalNoteButton.addEventListener('click', () => void sendMessage('Show me the fixed arrival note.'));
 weatherNowButton.addEventListener('click', () => void sendMessage('What is the weather near Tokyo Haneda now?'));
 weatherArrivalButton.addEventListener('click', () => void sendMessage('What is the weather near Tokyo Haneda at the sample arrival?'));
+otherWeatherButton.addEventListener('click', () => {
+  input.value = 'What is the current weather in Paris, France?';
+  input.focus();
+  input.setSelectionRange(input.value.indexOf('Paris'), input.value.indexOf('?'));
+});
 arrivalEmailButton.addEventListener('click', () => void sendMessage('Prepare my arrival email draft.'));
 
 function cancelPendingChat() {
@@ -480,19 +611,31 @@ function cancelPendingChat() {
   }
   input.disabled = !sessionReady;
   sendButton.disabled = !sessionReady;
+  boardingTimeButton.disabled = !sessionReady;
+  baggageGuidanceButton.disabled = !sessionReady;
+  weatherAvailabilityButton.disabled = !sessionReady;
+  arrivalNoteButton.disabled = !sessionReady;
   weatherNowButton.disabled = !sessionReady;
   weatherArrivalButton.disabled = !sessionReady;
+  otherWeatherButton.disabled = !sessionReady;
   arrivalEmailButton.disabled = vercelPreview || !sessionReady;
   noor.removeAttribute('aria-busy');
 }
 
 function finishRecording(discard = false) {
   if (discard) discardRecording = true;
+  if (browserRecognition) {
+    try {
+      if (discard) browserRecognition.abort();
+      else browserRecognition.stop();
+    } catch { /* Recognition may already have stopped. */ }
+    doneButton.disabled = true;
+    talkButton.disabled = true;
+    return;
+  }
   if (!recorder || recorder.state === 'inactive') return;
   clearTimeout(recordTimeout);
   recorder.stop();
-  micStream?.getTracks().forEach((track) => track.stop());
-  micStream = undefined;
   doneButton.disabled = true;
   talkButton.disabled = true;
 }
@@ -525,7 +668,7 @@ async function sendMessage(message) {
   if (fromTranscript) micStatus.textContent = 'Sending your reviewed question to Noor…';
   clearTranscriptReview();
 
-  if (recorder?.state === 'recording') {
+  if (recorder?.state === 'recording' || browserRecognition) {
     micSequence += 1;
     finishRecording(true);
   }
@@ -541,8 +684,13 @@ async function sendMessage(message) {
   input.value = '';
   input.disabled = true;
   sendButton.disabled = true;
+  boardingTimeButton.disabled = true;
+  baggageGuidanceButton.disabled = true;
+  weatherAvailabilityButton.disabled = true;
+  arrivalNoteButton.disabled = true;
   weatherNowButton.disabled = true;
   weatherArrivalButton.disabled = true;
+  otherWeatherButton.disabled = true;
   arrivalEmailButton.disabled = true;
   noor.setAttribute('aria-busy', 'true');
   setPose('thoughtful');
@@ -577,7 +725,7 @@ async function sendMessage(message) {
     sourceLine.textContent = data.sourceLabel || 'Claude · Fictional flight information · Not live';
     renderKnowledgeSources(data.knowledgeSources);
     if (data.weather) renderWeather(data.weather);
-    else if (data.sourceLabel === 'Weather unavailable') weatherCard.hidden = true;
+    else weatherCard.hidden = true;
     if (data.emailDraft) {
       renderEmailDraft(data.emailDraft);
       focusEmailAfterReply = true;
@@ -617,9 +765,14 @@ async function sendMessage(message) {
       noor.removeAttribute('aria-busy');
       input.disabled = !sessionReady;
       sendButton.disabled = !sessionReady;
-      talkButton.disabled = vercelPreview || !sessionReady;
+      boardingTimeButton.disabled = !sessionReady;
+      baggageGuidanceButton.disabled = !sessionReady;
+      weatherAvailabilityButton.disabled = !sessionReady;
+      arrivalNoteButton.disabled = !sessionReady;
+      talkButton.disabled = !canTalk();
       weatherNowButton.disabled = !sessionReady;
       weatherArrivalButton.disabled = !sessionReady;
+      otherWeatherButton.disabled = !sessionReady;
       arrivalEmailButton.disabled = vercelPreview || !sessionReady;
       if (sessionReady) (focusEmailAfterReply ? emailRecipient : input).focus();
     }
@@ -627,8 +780,9 @@ async function sendMessage(message) {
 }
 
 async function transcribeForReview(blob) {
+  keepRecordingPreview(blob);
   if (blob.size < 1000) {
-    micStatus.textContent = 'Recording was too short. Please try again.';
+    micStatus.textContent = 'Recording was too short. Try again, or use Check recording to hear what the microphone captured.';
     talkButton.disabled = !sessionReady;
     return;
   }
@@ -651,42 +805,112 @@ async function transcribeForReview(blob) {
       micStatus.textContent = 'No speech was recognized. Press Talk to try again, or type your question.';
       return;
     }
-    input.value = transcript;
-    reviewingTranscript = true;
-    transcriptReview.hidden = false;
-    micStatus.textContent = transcript.length > input.maxLength
-      ? 'Transcript is too long. Shorten it before pressing Send.'
-      : 'Transcript ready. Check or edit it, then press Send. Press Talk to record again or Stop to discard it.';
-    input.focus();
+    reviewTranscript(transcript);
   } catch (error) {
-    if (error.name !== 'AbortError') micStatus.textContent = error.message || 'Could not transcribe. Please try again.';
+    if (error.name !== 'AbortError') {
+      micStatus.textContent = `${error.message || 'Could not transcribe.'} Use Check recording; if it is silent, choose another microphone.`;
+    }
     talkButton.disabled = !sessionReady;
   } finally {
     if (transcribeRequest === controller) transcribeRequest = undefined;
   }
 }
 
+function reviewTranscript(transcript) {
+  input.value = transcript;
+  reviewingTranscript = true;
+  transcriptReview.hidden = false;
+  micStatus.textContent = transcript.length > input.maxLength
+    ? 'Transcript is too long. Shorten it before pressing Send.'
+    : 'Transcript ready. Check or edit it, then press Send. Press Talk to try again or Stop to discard it.';
+  input.focus();
+}
+
+function startBrowserRecognition() {
+  if (!BrowserSpeechRecognition) return;
+  interruptNoor();
+  clearTranscriptReview(true);
+  clearRecordingPreview();
+  if (voiceAvailable && !voiceEnabled) setVoiceEnabled(true, false);
+  const session = ++micSequence;
+  const recognition = new BrowserSpeechRecognition();
+  recognition.lang = 'en-US';
+  recognition.continuous = false;
+  recognition.interimResults = true;
+  recognition.maxAlternatives = 1;
+  browserRecognition = recognition;
+  let transcript = '';
+  let recognitionError = false;
+  discardRecording = false;
+  talkButton.disabled = true;
+  doneButton.disabled = false;
+  micStatus.textContent = 'Requesting microphone access…';
+  recognition.onstart = () => {
+    if (session === micSequence) micStatus.textContent = 'Listening… press Done when you finish.';
+  };
+  recognition.onresult = (event) => {
+    transcript = Array.from(event.results, (result) => result[0]?.transcript || '').join(' ').trim();
+  };
+  recognition.onerror = (event) => {
+    recognitionError = true;
+    if (session === micSequence && !discardRecording) {
+      micStatus.textContent = event.error === 'not-allowed'
+        ? 'Microphone permission was denied. Check browser settings, or type your question.'
+        : 'Speech was not recognized. Press Talk to try again, or type your question.';
+    }
+  };
+  recognition.onend = () => {
+    if (browserRecognition !== recognition) return;
+    clearTimeout(recordTimeout);
+    browserRecognition = undefined;
+    if (session !== micSequence) return;
+    doneButton.disabled = true;
+    talkButton.disabled = !canTalk();
+    if (discardRecording || recognitionError) return;
+    if (transcript) reviewTranscript(transcript);
+    else micStatus.textContent = 'No speech was recognized. Press Talk to try again, or type your question.';
+  };
+  try {
+    recognition.start();
+    recordTimeout = window.setTimeout(() => {
+      micStatus.textContent = 'Recording reached 30 seconds. Preparing your transcript…';
+      finishRecording(false);
+    }, 30_000);
+  } catch {
+    browserRecognition = undefined;
+    doneButton.disabled = true;
+    talkButton.disabled = !canTalk();
+    micStatus.textContent = 'Could not start the microphone. You can still type a question.';
+  }
+}
+
 async function startRecording() {
   if (!sessionReady || recorder?.state === 'recording' || talkButton.disabled) return;
+  if (vercelPreview) return startBrowserRecognition();
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
     micStatus.textContent = 'This browser cannot record your microphone. You can still type a question.';
     return;
   }
   interruptNoor();
   clearTranscriptReview(true);
-  if (!voiceEnabled) setVoiceEnabled(true, false);
+  clearRecordingPreview();
+  if (voiceAvailable && !voiceEnabled) setVoiceEnabled(true, false);
   const session = ++micSequence;
   talkButton.disabled = true;
   micStatus.textContent = 'Requesting microphone access…';
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-    });
+    const deviceId = micDeviceSelect.value;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: {
+      ...(deviceId ? { deviceId: { ideal: deviceId } } : {}),
+      echoCancellation: false, noiseSuppression: false, autoGainControl: true,
+    } });
     if (session !== micSequence) {
       stream.getTracks().forEach((track) => track.stop());
       return;
     }
     micStream = stream;
+    micDeviceSelect.disabled = true;
+    void listMicrophones(stream);
     const preferred = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
     const mimeType = preferred.find((type) => MediaRecorder.isTypeSupported(type));
     const activeRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
@@ -698,6 +922,9 @@ async function startRecording() {
     });
     activeRecorder.addEventListener('stop', () => {
       const blob = new Blob(chunks, { type: activeRecorder.mimeType || mimeType || 'audio/webm' });
+      stream.getTracks().forEach((track) => track.stop());
+      if (micStream === stream) micStream = undefined;
+      micDeviceSelect.disabled = false;
       if (recorder === activeRecorder) recorder = undefined;
       if (session !== micSequence) return;
       if (discardRecording) talkButton.disabled = !sessionReady;
@@ -714,6 +941,7 @@ async function startRecording() {
     if (session !== micSequence) return;
     micStream?.getTracks().forEach((track) => track.stop());
     micStream = undefined;
+    micDeviceSelect.disabled = false;
     recorder = undefined;
     talkButton.disabled = !sessionReady;
     doneButton.disabled = true;
@@ -731,6 +959,7 @@ stopButton.addEventListener('click', () => {
   finishRecording(true);
   interruptNoor();
   clearTranscriptReview(true);
+  clearRecordingPreview();
   void cancelSynthesis();
   responseText.textContent = 'Stopped. Ask another question when you’re ready.';
   sourceLine.textContent = 'Stopped';
@@ -755,9 +984,14 @@ async function endConversation() {
   clearConversationDisplay();
   input.disabled = true;
   sendButton.disabled = true;
+  boardingTimeButton.disabled = true;
+  baggageGuidanceButton.disabled = true;
+  weatherAvailabilityButton.disabled = true;
+  arrivalNoteButton.disabled = true;
   talkButton.disabled = true;
   weatherNowButton.disabled = true;
   weatherArrivalButton.disabled = true;
+  otherWeatherButton.disabled = true;
   arrivalEmailButton.disabled = true;
   endConversationButton.disabled = true;
   sessionStatus.textContent = 'Ending the conversation…';
@@ -787,3 +1021,4 @@ flightInfoButton.addEventListener('click', () => {
 });
 
 void startSession();
+if (window.location.protocol !== 'file:') void loadVoiceAvailability();

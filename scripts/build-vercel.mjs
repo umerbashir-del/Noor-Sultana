@@ -12,5 +12,5 @@ await cp(resolve(root, 'prototype/assets'), resolve(output, 'assets'), { recursi
 await cp(resolve(root, 'Documents/knowledge'), resolve(output, 'knowledge'), { recursive: true });
 let html = await readFile(resolve(root, 'prototype/index.html'), 'utf8');
 html = html.replace('<html lang="en">', '<html lang="en" data-vercel-preview="true">');
-html = html.replace('<p class="demo-note">', '<p class="demo-note">Vercel text preview: voice and email scheduling are coming later.</p>\n          <p class="demo-note">');
+html = html.replace('<p class="demo-note">', '<p class="demo-note">You can review microphone transcripts before sending. Browser speech recognition may use your browser provider. Chatterbox playback is available when connected. Email scheduling is unavailable here.</p>\n          <p class="demo-note">');
 await writeFile(resolve(output, 'index.html'), html);

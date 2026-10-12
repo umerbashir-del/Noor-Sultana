@@ -3,12 +3,13 @@
 import base64
 import io
 import json
+import os
 import sys
 from contextlib import redirect_stdout
 from pathlib import Path
 
 
-REFERENCE = Path(__file__).resolve().parent / "voice" / "noor-reference.wav"
+REFERENCE = os.getenv("NOOR_VOICE_REFERENCE", "").strip()
 model = None
 
 
@@ -31,7 +32,15 @@ def speak(text):
 
         loaded_model = load_model()
         with torch.inference_mode():
-            waveform = loaded_model.generate(text, audio_prompt_path=str(REFERENCE))
+            if REFERENCE:
+                reference_path = Path(REFERENCE).expanduser()
+                if not reference_path.is_absolute():
+                    reference_path = Path(__file__).resolve().parent / reference_path
+                if not reference_path.is_file():
+                    raise FileNotFoundError("Configured voice reference was not found")
+                waveform = loaded_model.generate(text, audio_prompt_path=str(reference_path))
+            else:
+                waveform = loaded_model.generate(text)
         output = io.BytesIO()
         ta.save(output, waveform.cpu(), loaded_model.sr, format="wav")
     return base64.b64encode(output.getvalue()).decode("ascii")

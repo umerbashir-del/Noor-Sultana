@@ -4,6 +4,10 @@ export function arrivalEmailIntent(message) {
   return /\b(?:e-?mail)\b/i.test(message);
 }
 
+export function arrivalNoteIntent(message) {
+  return /\barrival note\b/i.test(message) && !arrivalEmailIntent(message);
+}
+
 export function createArrivalEmailDraft() {
   return {
     subject: 'Your arrival note — Noor demo',

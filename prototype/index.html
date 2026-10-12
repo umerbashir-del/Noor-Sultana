@@ -41,8 +41,13 @@
             <div class="knowledge-sources" id="knowledgeSources" hidden></div>
           </div>
           <div class="weather-controls" aria-label="Passenger shortcuts">
+            <button class="weather-button" id="boardingTimeButton" type="button" disabled>Boarding time</button>
+            <button class="weather-button" id="baggageGuidanceButton" type="button" disabled>Baggage guidance</button>
+            <button class="weather-button" id="weatherAvailabilityButton" type="button" disabled>Weather availability</button>
+            <button class="weather-button" id="arrivalNoteButton" type="button" disabled>Arrival note</button>
             <button class="weather-button" id="weatherNowButton" type="button" disabled>Tokyo weather now</button>
             <button class="weather-button" id="weatherArrivalButton" type="button" disabled>Weather at sample arrival</button>
+            <button class="weather-button" id="otherWeatherButton" type="button" disabled>Weather elsewhere</button>
             <button class="weather-button" id="arrivalEmailButton" type="button" disabled>Arrival email draft</button>
           </div>
           <aside class="weather-card" id="weatherCard" hidden aria-live="polite" aria-label="Destination weather">
@@ -50,6 +55,7 @@
             <span id="weatherSummary"></span>
             <small id="weatherTimes"></small>
             <small id="weatherStatus"></small>
+            <small id="placeSource" hidden>Place names: <a href="https://www.geonames.org/" target="_blank" rel="noopener noreferrer">GeoNames</a> via Open-Meteo</small>
             <small>Weather: <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo</a> · Flight details are fictional · Not aviation guidance</small>
           </aside>
           <section class="email-card" id="emailCard" hidden aria-label="Arrival email draft">
@@ -85,9 +91,11 @@
           <div class="session-controls">
             <button class="session-button" id="endConversationButton" type="button" disabled>End conversation</button>
             <span id="sessionStatus" role="status">Starting conversation…</span>
+            <a id="localDemoLink" href="http://127.0.0.1:4173/" hidden>Open the working local demo</a>
           </div>
           <div class="voice-controls">
             <button class="voice-button" id="voiceToggle" type="button" aria-pressed="false">🔇 Voice off</button>
+            <button class="voice-button" id="playReplyButton" type="button" hidden>▶ Play reply</button>
             <span id="voiceStatus" role="status">Turn on voice to hear Noor’s replies.</span>
           </div>
           <div class="mic-controls" aria-label="Voice conversation controls">
@@ -95,6 +103,11 @@
             <button class="mic-button" id="doneButton" type="button" disabled>Done</button>
             <button class="mic-button stop-button" id="stopButton" type="button">Stop</button>
             <span id="micStatus" role="status">Press Talk to ask Noor a question.</span>
+          </div>
+          <div class="mic-device-controls" id="micDeviceControls">
+            <label for="micDeviceSelect">Microphone</label>
+            <select id="micDeviceSelect"><option value="">Default microphone</option></select>
+            <button class="voice-button" id="playRecordingButton" type="button" hidden>▶ Check recording</button>
           </div>
           <p class="demo-note">For urgent help, contact cabin crew.</p>
         </section>

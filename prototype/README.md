@@ -1,6 +1,8 @@
 # Noor flight assistant demo
 
-This is a small prototype with offline launch safeguards. It uses fictional Cloudline Air CL 204 flight details and sends general passenger chat to Claude. It can check real public weather near Tokyo Haneda and JFK through Open-Meteo, but it does not check real flight, airport-operation, or cabin-service data.
+This is a small prototype with offline launch safeguards. It uses fictional Cloudline Air CL 204 flight details and sends general passenger chat to Claude. It can check current model weather for a named city or near Tokyo Haneda and JFK through Open-Meteo, but it does not check real flight, airport-operation, or cabin-service data.
+
+Passenger shortcuts include **Boarding time**, **Baggage guidance**, **Weather availability**, and **Arrival note**. The boarding time is fictional, baggage guidance comes from a draft knowledge page, and the fixed arrival note is general demo guidance. These shortcuts appear alongside Tokyo weather, weather elsewhere, and the arrival email draft.
 
 ## Passenger knowledge
 
@@ -34,11 +36,11 @@ Restart the server after changing `.env.local`. The key stays on the server and 
 
 ## Destination weather
 
-Click **Tokyo weather now** or **Weather at sample arrival** to ask Noor and see a read-only weather card. You can also type or say a question about current weather near JFK or Tokyo, or weather around the fictional Tokyo arrival. The server checks Open-Meteo data and passes only those weather facts and the current question to Claude for a short reply. If Claude is not connected or cannot answer, Noor uses a factual server-written reply, so weather still works without a Claude key. The server only queries those two fixed locations; it does not accept an arbitrary URL or destination.
+Click **Tokyo weather now** or **Weather at sample arrival** to ask Noor and see a read-only weather card. **Weather elsewhere** fills in an example question; replace the selected city with another place. You can also type or say a question such as “What is the current weather in Paris, France?” The server resolves a named city through Open-Meteo geocoding, checks its current model conditions, and passes only those facts and the question to Claude for a short reply. If the name is ambiguous, Noor asks for a state or country. If Claude is not connected or cannot answer, Noor uses a factual server-written reply. The server calls only the fixed Open-Meteo geocoding and forecast hosts; a passenger cannot supply an arbitrary URL. Future forecasts remain limited to the fictional Tokyo arrival.
 
 The sample arrival is October 13, 2026 at 2:40 PM Japan time. Its forecast is available only while that time is in the future and within the provider's forecast window. The card shows the forecast time and when the data was retrieved. If weather is unavailable, Noor reports that instead of inventing conditions. Weather is for passenger information, not aircraft operating decisions. Flight details remain fictional.
 
-Weather data: [Open-Meteo](https://open-meteo.com/). Its free API is for non-commercial evaluation and requires attribution; a commercial deployment needs a suitable licence or provider. The server must be able to reach `api.open-meteo.com` over HTTPS.
+Weather and place data: [Open-Meteo](https://open-meteo.com/). Its free API is for non-commercial evaluation and requires attribution; a commercial deployment needs a suitable licence or provider. The server must be able to reach `api.open-meteo.com` and `geocoding-api.open-meteo.com` over HTTPS.
 
 ## Conversation sessions
 
@@ -64,18 +66,20 @@ The repository root has a `Dockerfile` that installs Node, Python, Chatterbox, a
 
 ## Noor’s voice
 
-Click **Voice off** in the demo to turn on spoken replies. Noor’s next reply is synthesized locally with Chatterbox Turbo using `voice/noor-reference.wav`. Text chat still works if the voice model is unavailable.
+Click **Voice off** in the demo to turn on spoken replies. Noor’s next reply is synthesized locally with Chatterbox Turbo’s built-in voice. Text chat still works if the voice model is unavailable.
 
 Each conversation has its own speech job. Chatterbox processes jobs one at a time to fit the local voice model; a visitor's **Stop** button cancels only that visitor's job. If a job is already generating, the worker restarts before processing the next queued visitor. Voice requests require an active conversation session.
 
 ## Talk to Noor
 
-1. Click **Talk** and allow the browser to use your microphone. Noor requests the browser's echo cancellation, noise suppression, and automatic gain control.
+1. Click **Talk** and allow the browser to use your microphone. If more than one microphone is available, select the intended one below the controls. Noor uses automatic gain control while recording; browser echo cancellation and noise suppression are off so quiet speech is less likely to be removed.
 2. Ask a question, then click **Done**. A local faster-whisper `base.en` model transcribes the recording and puts the words in the message box. Recording also stops after 30 seconds.
 3. Check and edit the transcript, then click **Send** for Noor to answer and speak. Click **Talk** to record again, or **Stop** to discard the transcript, stop playback, or cancel speech generation. You can still type and send a question normally.
+
+If transcription cannot hear you, click **Check recording** to play back the clip locally. The page does not save this playback clip; it is cleared when you record again or end the conversation.
 
 Talk automatically turns Noor's voice on. The microphone is active only between **Talk** and **Done** (or **Stop**). Automatic end-of-turn detection and always-listening are not used in this version.
 
 The server uses the existing Chatterbox Python environment at `../chatterboc-demo/.venv/Scripts/python.exe`, which now also has `faster-whisper` installed. If you move this project or use another environment, set `CHATTERBOX_PYTHON` in `.env.local` to the full path of a Python executable with `chatterbox-tts`, PyTorch, torchaudio, and `faster-whisper` installed. You can set `ASR_PYTHON` separately if speech recognition uses another environment. The server starts loading Chatterbox when it launches, so the first spoken reply waits less if you allow that startup to finish. Later replies reuse the model. Microphone recordings are processed locally for transcription; the transcript is sent to Claude. The audio reference and generated speech are not sent to Claude.
 
-The included reference is a 12.5-second ElevenLabs Hope clip converted to mono 24 kHz, 16-bit PCM WAV. To try a different voice, replace `voice/noor-reference.wav` with another suitable reference WAV and restart `node server.mjs`. Chatterbox follows the reference voice and its delivery, so use a clip with the accent and style you want Noor to speak.
+The optional local reference is a 12.5-second ElevenLabs Hope clip converted to mono 24 kHz, 16-bit PCM WAV. To use it, set `NOOR_VOICE_REFERENCE=voice/noor-reference.wav` in `.env.local` and restart `node server.mjs`. You can point that setting to another suitable WAV. Chatterbox follows the reference voice and its delivery, so use a clip with the accent and style you want Noor to speak. The hosted Replicate voice named Abigail is separate from the local built-in voice, so the two may sound different.

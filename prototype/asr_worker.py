@@ -17,16 +17,23 @@ def transcribe(encoded_audio):
         if model is None:
             model = WhisperModel("base.en", device="cpu", compute_type="int8")
         audio = io.BytesIO(base64.b64decode(encoded_audio, validate=True))
-        segments, _ = model.transcribe(
-            audio,
-            language="en",
-            beam_size=5,
-            vad_filter=True,
-            condition_on_previous_text=False,
-        )
-        text = " ".join(segment.text.strip() for segment in segments).strip()
+        def recognize(use_vad):
+            audio.seek(0)
+            segments, _ = model.transcribe(
+                audio,
+                language="en",
+                beam_size=5,
+                vad_filter=use_vad,
+                condition_on_previous_text=False,
+            )
+            return " ".join(
+                segment.text.strip() for segment in segments
+                if segment.no_speech_prob < 0.6
+            ).strip()
+
+        text = recognize(True) or recognize(False)
     if not text:
-        raise ValueError("I couldn't hear a clear question. Please try again.")
+        raise ValueError("No clear speech detected.")
     return text[:500]
 
 
