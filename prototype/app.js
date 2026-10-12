@@ -9,14 +9,20 @@ const knowledgeSources = document.querySelector('#knowledgeSources');
 const endConversationButton = document.querySelector('#endConversationButton');
 const sessionStatus = document.querySelector('#sessionStatus');
 const localDemoLink = document.querySelector('#localDemoLink');
+const boardingTimeButton = document.querySelector('#boardingTimeButton');
+const baggageGuidanceButton = document.querySelector('#baggageGuidanceButton');
+const weatherAvailabilityButton = document.querySelector('#weatherAvailabilityButton');
+const arrivalNoteButton = document.querySelector('#arrivalNoteButton');
 const weatherNowButton = document.querySelector('#weatherNowButton');
 const weatherArrivalButton = document.querySelector('#weatherArrivalButton');
+const otherWeatherButton = document.querySelector('#otherWeatherButton');
 const arrivalEmailButton = document.querySelector('#arrivalEmailButton');
 const weatherCard = document.querySelector('#weatherCard');
 const weatherTitle = document.querySelector('#weatherTitle');
 const weatherSummary = document.querySelector('#weatherSummary');
 const weatherTimes = document.querySelector('#weatherTimes');
 const weatherStatus = document.querySelector('#weatherStatus');
+const placeSource = document.querySelector('#placeSource');
 const emailCard = document.querySelector('#emailCard');
 const emailRecipient = document.querySelector('#emailRecipient');
 const sendEmailCodeButton = document.querySelector('#sendEmailCodeButton');
@@ -233,9 +239,14 @@ async function startSession(successMessage = 'Conversation ready. End it to clea
   clearTimeout(sessionTimer);
   input.disabled = true;
   sendButton.disabled = true;
+  boardingTimeButton.disabled = true;
+  baggageGuidanceButton.disabled = true;
+  weatherAvailabilityButton.disabled = true;
+  arrivalNoteButton.disabled = true;
   talkButton.disabled = true;
   weatherNowButton.disabled = true;
   weatherArrivalButton.disabled = true;
+  otherWeatherButton.disabled = true;
   arrivalEmailButton.disabled = true;
   endConversationButton.disabled = true;
   sessionStatus.textContent = 'Starting conversation…';
@@ -248,9 +259,14 @@ async function startSession(successMessage = 'Conversation ready. End it to clea
     scheduleSessionEnd();
     input.disabled = false;
     sendButton.disabled = false;
+    boardingTimeButton.disabled = false;
+    baggageGuidanceButton.disabled = false;
+    weatherAvailabilityButton.disabled = false;
+    arrivalNoteButton.disabled = false;
     talkButton.disabled = !canTalk();
     weatherNowButton.disabled = false;
     weatherArrivalButton.disabled = false;
+    otherWeatherButton.disabled = false;
     arrivalEmailButton.disabled = vercelPreview;
     endConversationButton.disabled = false;
     endConversationButton.textContent = 'End conversation';
@@ -502,7 +518,9 @@ function renderWeather(weather) {
   weatherTitle.textContent = weather.location;
   weatherSummary.textContent = `${weather.condition} · ${weather.temperatureC}°C${weather.kind === 'arrival' ? ` · ${weather.precipitationProbability}% chance of precipitation` : ''}`;
   weatherTimes.textContent = `${weather.kind === 'arrival' ? 'Forecast for' : 'Conditions for'} ${weatherTime(weather.validAt, weather.timeZone)} · Retrieved ${weatherTime(weather.fetchedAt, weather.timeZone)}`;
-  weatherStatus.textContent = weather.kind === 'arrival' ? 'Arrival time comes from the fictional demo flight.' : 'Current model conditions near the airport.';
+  weatherStatus.textContent = weather.kind === 'arrival' ? 'Arrival time comes from the fictional demo flight.'
+    : weather.city ? 'Current model conditions near the named place.' : 'Current model conditions near the airport.';
+  placeSource.hidden = !weather.city;
 }
 
 function renderKnowledgeSources(sources) {
@@ -521,8 +539,17 @@ function renderKnowledgeSources(sources) {
   if (!knowledgeSources.childElementCount) knowledgeSources.hidden = true;
 }
 
+boardingTimeButton.addEventListener('click', () => void sendMessage('What time does this sample flight board?'));
+baggageGuidanceButton.addEventListener('click', () => void sendMessage('What general guidance do you have about carry-on and checked baggage?'));
+weatherAvailabilityButton.addEventListener('click', () => void sendMessage('What weather information can you check?'));
+arrivalNoteButton.addEventListener('click', () => void sendMessage('Show me the fixed arrival note.'));
 weatherNowButton.addEventListener('click', () => void sendMessage('What is the weather near Tokyo Haneda now?'));
 weatherArrivalButton.addEventListener('click', () => void sendMessage('What is the weather near Tokyo Haneda at the sample arrival?'));
+otherWeatherButton.addEventListener('click', () => {
+  input.value = 'What is the current weather in Paris, France?';
+  input.focus();
+  input.setSelectionRange(input.value.indexOf('Paris'), input.value.indexOf('?'));
+});
 arrivalEmailButton.addEventListener('click', () => void sendMessage('Prepare my arrival email draft.'));
 
 function cancelPendingChat() {
@@ -536,8 +563,13 @@ function cancelPendingChat() {
   }
   input.disabled = !sessionReady;
   sendButton.disabled = !sessionReady;
+  boardingTimeButton.disabled = !sessionReady;
+  baggageGuidanceButton.disabled = !sessionReady;
+  weatherAvailabilityButton.disabled = !sessionReady;
+  arrivalNoteButton.disabled = !sessionReady;
   weatherNowButton.disabled = !sessionReady;
   weatherArrivalButton.disabled = !sessionReady;
+  otherWeatherButton.disabled = !sessionReady;
   arrivalEmailButton.disabled = vercelPreview || !sessionReady;
   noor.removeAttribute('aria-busy');
 }
@@ -606,8 +638,13 @@ async function sendMessage(message) {
   input.value = '';
   input.disabled = true;
   sendButton.disabled = true;
+  boardingTimeButton.disabled = true;
+  baggageGuidanceButton.disabled = true;
+  weatherAvailabilityButton.disabled = true;
+  arrivalNoteButton.disabled = true;
   weatherNowButton.disabled = true;
   weatherArrivalButton.disabled = true;
+  otherWeatherButton.disabled = true;
   arrivalEmailButton.disabled = true;
   noor.setAttribute('aria-busy', 'true');
   setPose('thoughtful');
@@ -642,7 +679,7 @@ async function sendMessage(message) {
     sourceLine.textContent = data.sourceLabel || 'Claude · Fictional flight information · Not live';
     renderKnowledgeSources(data.knowledgeSources);
     if (data.weather) renderWeather(data.weather);
-    else if (data.sourceLabel === 'Weather unavailable') weatherCard.hidden = true;
+    else weatherCard.hidden = true;
     if (data.emailDraft) {
       renderEmailDraft(data.emailDraft);
       focusEmailAfterReply = true;
@@ -682,9 +719,14 @@ async function sendMessage(message) {
       noor.removeAttribute('aria-busy');
       input.disabled = !sessionReady;
       sendButton.disabled = !sessionReady;
+      boardingTimeButton.disabled = !sessionReady;
+      baggageGuidanceButton.disabled = !sessionReady;
+      weatherAvailabilityButton.disabled = !sessionReady;
+      arrivalNoteButton.disabled = !sessionReady;
       talkButton.disabled = !canTalk();
       weatherNowButton.disabled = !sessionReady;
       weatherArrivalButton.disabled = !sessionReady;
+      otherWeatherButton.disabled = !sessionReady;
       arrivalEmailButton.disabled = vercelPreview || !sessionReady;
       if (sessionReady) (focusEmailAfterReply ? emailRecipient : input).focus();
     }
@@ -882,9 +924,14 @@ async function endConversation() {
   clearConversationDisplay();
   input.disabled = true;
   sendButton.disabled = true;
+  boardingTimeButton.disabled = true;
+  baggageGuidanceButton.disabled = true;
+  weatherAvailabilityButton.disabled = true;
+  arrivalNoteButton.disabled = true;
   talkButton.disabled = true;
   weatherNowButton.disabled = true;
   weatherArrivalButton.disabled = true;
+  otherWeatherButton.disabled = true;
   arrivalEmailButton.disabled = true;
   endConversationButton.disabled = true;
   sessionStatus.textContent = 'Ending the conversation…';

@@ -7,9 +7,10 @@ const sampleArrival = Date.parse('2026-10-13T05:40:00Z'); // 2:40 PM JST; fictio
 const source = { name: 'Open-Meteo', url: 'https://open-meteo.com/' };
 
 class WeatherUnavailable extends Error {
-  constructor(message) {
+  constructor(message, code = 'unavailable') {
     super(message);
     this.name = 'WeatherUnavailable';
+    this.code = code;
   }
 }
 
@@ -49,16 +50,33 @@ function checkedProbability(value) {
   return Math.round(value);
 }
 
+export function weatherAvailabilityIntent(message) {
+  return /\b(?:what|which)\s+(?:kinds?\s+of\s+)?weather(?:\s+information)?\s+(?:can you|do you)\s+(?:check|provide|have)\b/i.test(message);
+}
+
 export function weatherIntent(message) {
   if (!/\b(weather|forecast|temperature|temp|rain(?:ing|y)?|snow(?:ing|y)?|wind(?:y)?|sunny|cloudy|conditions)\b/i.test(message)) return null;
-  const mentionsJfk = /\b(JFK|New York|departure)\b/i.test(message);
-  const mentionsHnd = /\b(HND|Haneda|Tokyo|destination|arrival)\b/i.test(message);
-  if (!mentionsJfk && !mentionsHnd && /\b(?:in|at|near)\s+[a-z]+/i.test(message)) return { unsupported: 'location' };
   if (/\b(departure|takeoff|taking off)\b/i.test(message)) return { unsupported: 'departure' };
-  if (/\b(tomorrow|next week|next month)\b/i.test(message)) return { unsupported: 'time' };
+  if (/\b(tomorrow|tonight|weekend|next week|next month|later|on (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b/i.test(message)) return { unsupported: 'time' };
+  const match = message.match(/\b(?:in|near|around|for|at)\s+([\p{L}\p{M}][\p{L}\p{M}\s,.'-]{1,69})/iu)
+    || message.match(/^\s*(?:weather|forecast|temperature)\s+([\p{L}\p{M}][\p{L}\p{M}\s,.'-]{1,69})/iu)
+    || message.match(/^\s*([\p{L}\p{M}][\p{L}\p{M}\s,.'-]{1,69}?)\s+(?:weather|forecast)\b/iu);
+  const place = match?.[1].replace(/\b(?:right now|now|today|currently|at the moment|please)\b.*$/iu, '').trim().replace(/[,.]$/, '').trim();
+  const namedJfk = place && /\bJFK\b/i.test(place);
+  const namedHnd = place && (/\b(?:HND|Haneda|destination)\b/i.test(place)
+    || (/^Tokyo\b/i.test(place) && /\barriv\w*\b/i.test(message)));
+  const mentionsJfk = namedJfk || (!place && /\b(JFK|New York)\b/i.test(message));
+  const mentionsHnd = namedHnd || (!place && /\b(HND|Haneda|Tokyo|destination|arrival)\b/i.test(message));
+  const arrival = /\b(arriv\w*|land\w*|when we get there)\b/i.test(message);
+  if (place && !namedJfk && !namedHnd) {
+    if (arrival) return { unsupported: 'time' };
+    if (place.length < 2 || /\b(?:and|or|versus|vs)\b/i.test(place)
+      || !/^[\p{L}\p{M}][\p{L}\p{M}\s,.'-]*$/u.test(place)) return { unsupported: 'location' };
+    return { place, when: 'now' };
+  }
   if (mentionsJfk && /\b(arriv\w*|land\w*)\b/i.test(message)) return { unsupported: 'time' };
   const location = mentionsJfk ? 'jfk' : 'hnd';
-  const when = /\b(arriv\w*|land\w*|when we get there)\b/i.test(message) && location === 'hnd' ? 'arrival' : 'now';
+  const when = arrival && location === 'hnd' ? 'arrival' : 'now';
   return { location, when };
 }
 
@@ -67,6 +85,53 @@ export async function getWeather(locationCode, when, { fetchImpl = fetch, now = 
   if (!location || !['now', 'arrival'].includes(when) || (when === 'arrival' && locationCode !== 'hnd')) {
     throw new TypeError('Unsupported weather lookup.');
   }
+  return forecastAt(location, when, { fetchImpl, now });
+}
+
+function safePlacePart(value) {
+  return typeof value === 'string' && value.length <= 80 && /^[\p{L}\p{M}][\p{L}\p{M}\s.'-]*$/u.test(value);
+}
+
+export async function getWeatherForPlace(place, { fetchImpl = fetch, now = Date.now() } = {}) {
+  if (typeof place !== 'string' || place.length < 2 || place.length > 70
+    || !/^[\p{L}\p{M}][\p{L}\p{M}\s,.'-]*$/u.test(place)) {
+    throw new TypeError('Invalid place name.');
+  }
+  const url = new URL('https://geocoding-api.open-meteo.com/v1/search');
+  url.searchParams.set('name', place);
+  url.searchParams.set('count', '5');
+  url.searchParams.set('language', 'en');
+  let response;
+  try { response = await fetchImpl(url, { signal: AbortSignal.timeout(8000) }); }
+  catch { throw new WeatherUnavailable('Place search is unreachable.'); }
+  if (!response.ok) throw new WeatherUnavailable('Place search is unavailable.');
+  let payload;
+  try { payload = await response.json(); }
+  catch { throw new WeatherUnavailable('Place search returned unreadable data.'); }
+  const city = place.split(',')[0].trim().toLocaleLowerCase('en');
+  const choices = (Array.isArray(payload?.results) ? payload.results : []).filter((item) =>
+    safePlacePart(item?.name) && safePlacePart(item?.country)
+    && item.name.toLocaleLowerCase('en') === city
+    && Number.isFinite(item.latitude) && Math.abs(item.latitude) <= 90
+    && Number.isFinite(item.longitude) && Math.abs(item.longitude) <= 180
+    && typeof item.timezone === 'string' && item.timezone.length <= 60
+    && (() => { try { new Intl.DateTimeFormat('en', { timeZone: item.timezone }); return true; } catch { return false; } })());
+  if (!choices.length) throw new WeatherUnavailable('I could not identify that place.', 'place');
+  if (!place.includes(',') && choices.length > 1
+    && !(Number.isFinite(choices[0].population) && Number.isFinite(choices[1].population)
+      && choices[0].population >= 2 * choices[1].population)) {
+    throw new WeatherUnavailable('More than one place matches. Include a state or country.', 'ambiguous');
+  }
+  const selected = choices[0];
+  const area = safePlacePart(selected.admin1) && selected.admin1 !== selected.name ? `${selected.admin1}, ` : '';
+  return forecastAt({
+    name: `${selected.name}, ${area}${selected.country}`,
+    city: selected.name,
+    latitude: selected.latitude, longitude: selected.longitude, timeZone: selected.timezone,
+  }, 'now', { fetchImpl, now });
+}
+
+async function forecastAt(location, when, { fetchImpl, now }) {
   if (when === 'arrival' && (sampleArrival <= now || sampleArrival - now > 7 * 86_400_000)) {
     throw new WeatherUnavailable('The sample arrival is in the past or outside the forecast window.');
   }
@@ -76,7 +141,7 @@ export async function getWeather(locationCode, when, { fetchImpl = fetch, now = 
   url.searchParams.set('longitude', String(location.longitude));
   url.searchParams.set('timezone', location.timeZone);
   url.searchParams.set('timeformat', 'unixtime');
-  url.searchParams.set('forecast_days', '7');
+  url.searchParams.set('forecast_days', when === 'now' ? '1' : '7');
   if (when === 'now') url.searchParams.set('current', 'temperature_2m,weather_code');
   else url.searchParams.set('hourly', 'temperature_2m,weather_code,precipitation_probability');
 
@@ -130,6 +195,7 @@ export async function getWeather(locationCode, when, { fetchImpl = fetch, now = 
 
   return {
     location: location.name,
+    ...(location.city ? { city: location.city } : {}),
     timeZone: location.timeZone,
     kind: when,
     validAt: time,

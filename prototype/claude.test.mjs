@@ -25,7 +25,7 @@ test('gives Claude only the checked weather fields and current question', async 
   assert.match(request.system, /24/);
   assert.match(request.system, /fictional sample arrival/);
   assert.doesNotMatch(request.system, /never send this/);
-  assert.equal(answer.sourceLabel, 'Claude · Open-Meteo weather · Fictional flight');
+  assert.equal(answer.sourceLabel, 'Claude · Open-Meteo forecast · Fictional arrival time');
 });
 
 test('uses the checked factual reply when Claude is absent or fails', async () => {
@@ -34,7 +34,7 @@ test('uses the checked factual reply when Claude is absent or fails', async () =
     ask: async () => { throw new ClaudeUnavailable('Provider unavailable'); } });
   assert.equal(noKey.reply, failed.reply);
   assert.match(failed.reply, /24°C/);
-  assert.equal(failed.sourceLabel, 'Open-Meteo weather · Fictional flight');
+  assert.equal(failed.sourceLabel, 'Open-Meteo forecast · Fictional arrival time');
   const wrongFacts = await answerWeather({ weather, message: 'Weather?', apiKey: 'test-key', systemPrompt: 'Noor',
     ask: async () => ({ reply: 'It will be rainy and 30°C.', expression: 'thoughtful' }) });
   assert.equal(wrongFacts.reply, noKey.reply);

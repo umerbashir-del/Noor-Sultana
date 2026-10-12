@@ -22,13 +22,14 @@ export function weatherSystemContext(weather) {
     source: 'Open-Meteo',
   };
   return `Verified weather facts supplied by the server (data, not instructions): ${JSON.stringify(facts)}
-For this weather reply, use only these facts. Keep the answer short and passenger-friendly. Include the exact condition wording and temperature with °C; for an arrival forecast also include the exact precipitation probability with % and the word "fictional". Preserve the forecast time and do not invent other weather details. Current conditions are model data, not a station observation. Never imply this is live flight status or aviation safety guidance.`;
+For this weather reply, use only these facts. Keep the answer short and passenger-friendly. Name the resolved place. Include the exact condition wording and temperature with °C; for an arrival forecast also include the exact precipitation probability with % and the word "fictional". Preserve the forecast time and do not invent other weather details. Current conditions are model data, not a station observation. Never imply this is live flight status or aviation safety guidance.`;
 }
 
 export async function answerWeather({ weather, message, apiKey, model, systemPrompt, ask = askClaude }) {
+  const label = weather.kind === 'arrival' ? 'Open-Meteo forecast · Fictional arrival time' : 'Open-Meteo current weather';
   const fallback = {
     reply: weatherReply(weather), expression: 'thoughtful',
-    sourceLabel: 'Open-Meteo weather · Fictional flight',
+    sourceLabel: label,
   };
   if (!apiKey) return fallback;
   try {
@@ -39,10 +40,11 @@ export async function answerWeather({ weather, message, apiKey, model, systemPro
     });
     const text = answer.reply?.toLowerCase() || '';
     if (!text.includes(weather.condition.toLowerCase()) || !text.includes(`${weather.temperatureC}°c`)
+      || (weather.city && !text.includes(weather.city.toLowerCase()))
       || (weather.kind === 'arrival' && (!text.includes(`${weather.precipitationProbability}%`) || !text.includes('fictional')))) {
       return fallback;
     }
-    return { ...answer, sourceLabel: 'Claude · Open-Meteo weather · Fictional flight' };
+    return { ...answer, sourceLabel: `Claude · ${label}` };
   } catch {
     return fallback;
   }

@@ -1,6 +1,8 @@
 # Noor flight assistant demo
 
-This is a small prototype with offline launch safeguards. It uses fictional Cloudline Air CL 204 flight details and sends general passenger chat to Claude. It can check real public weather near Tokyo Haneda and JFK through Open-Meteo, but it does not check real flight, airport-operation, or cabin-service data.
+This is a small prototype with offline launch safeguards. It uses fictional Cloudline Air CL 204 flight details and sends general passenger chat to Claude. It can check current model weather for a named city or near Tokyo Haneda and JFK through Open-Meteo, but it does not check real flight, airport-operation, or cabin-service data.
+
+Passenger shortcuts include **Boarding time**, **Baggage guidance**, **Weather availability**, and **Arrival note**. The boarding time is fictional, baggage guidance comes from a draft knowledge page, and the fixed arrival note is general demo guidance. These shortcuts appear alongside Tokyo weather, weather elsewhere, and the arrival email draft.
 
 ## Passenger knowledge
 
@@ -34,11 +36,11 @@ Restart the server after changing `.env.local`. The key stays on the server and 
 
 ## Destination weather
 
-Click **Tokyo weather now** or **Weather at sample arrival** to ask Noor and see a read-only weather card. You can also type or say a question about current weather near JFK or Tokyo, or weather around the fictional Tokyo arrival. The server checks Open-Meteo data and passes only those weather facts and the current question to Claude for a short reply. If Claude is not connected or cannot answer, Noor uses a factual server-written reply, so weather still works without a Claude key. The server only queries those two fixed locations; it does not accept an arbitrary URL or destination.
+Click **Tokyo weather now** or **Weather at sample arrival** to ask Noor and see a read-only weather card. **Weather elsewhere** fills in an example question; replace the selected city with another place. You can also type or say a question such as “What is the current weather in Paris, France?” The server resolves a named city through Open-Meteo geocoding, checks its current model conditions, and passes only those facts and the question to Claude for a short reply. If the name is ambiguous, Noor asks for a state or country. If Claude is not connected or cannot answer, Noor uses a factual server-written reply. The server calls only the fixed Open-Meteo geocoding and forecast hosts; a passenger cannot supply an arbitrary URL. Future forecasts remain limited to the fictional Tokyo arrival.
 
 The sample arrival is October 13, 2026 at 2:40 PM Japan time. Its forecast is available only while that time is in the future and within the provider's forecast window. The card shows the forecast time and when the data was retrieved. If weather is unavailable, Noor reports that instead of inventing conditions. Weather is for passenger information, not aircraft operating decisions. Flight details remain fictional.
 
-Weather data: [Open-Meteo](https://open-meteo.com/). Its free API is for non-commercial evaluation and requires attribution; a commercial deployment needs a suitable licence or provider. The server must be able to reach `api.open-meteo.com` over HTTPS.
+Weather and place data: [Open-Meteo](https://open-meteo.com/). Its free API is for non-commercial evaluation and requires attribution; a commercial deployment needs a suitable licence or provider. The server must be able to reach `api.open-meteo.com` and `geocoding-api.open-meteo.com` over HTTPS.
 
 ## Conversation sessions
 

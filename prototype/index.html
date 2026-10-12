@@ -41,8 +41,13 @@
             <div class="knowledge-sources" id="knowledgeSources" hidden></div>
           </div>
           <div class="weather-controls" aria-label="Passenger shortcuts">
+            <button class="weather-button" id="boardingTimeButton" type="button" disabled>Boarding time</button>
+            <button class="weather-button" id="baggageGuidanceButton" type="button" disabled>Baggage guidance</button>
+            <button class="weather-button" id="weatherAvailabilityButton" type="button" disabled>Weather availability</button>
+            <button class="weather-button" id="arrivalNoteButton" type="button" disabled>Arrival note</button>
             <button class="weather-button" id="weatherNowButton" type="button" disabled>Tokyo weather now</button>
             <button class="weather-button" id="weatherArrivalButton" type="button" disabled>Weather at sample arrival</button>
+            <button class="weather-button" id="otherWeatherButton" type="button" disabled>Weather elsewhere</button>
             <button class="weather-button" id="arrivalEmailButton" type="button" disabled>Arrival email draft</button>
           </div>
           <aside class="weather-card" id="weatherCard" hidden aria-live="polite" aria-label="Destination weather">
@@ -50,6 +55,7 @@
             <span id="weatherSummary"></span>
             <small id="weatherTimes"></small>
             <small id="weatherStatus"></small>
+            <small id="placeSource" hidden>Place names: <a href="https://www.geonames.org/" target="_blank" rel="noopener noreferrer">GeoNames</a> via Open-Meteo</small>
             <small>Weather: <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo</a> · Flight details are fictional · Not aviation guidance</small>
           </aside>
           <section class="email-card" id="emailCard" hidden aria-label="Arrival email draft">

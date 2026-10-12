@@ -12,6 +12,8 @@ For microphone questions, the web preview uses the browser's Speech Recognition 
 
 For spoken replies, apply `supabase/migrations/20261012_noor_demo_voice.sql`, then set `REPLICATE_API_TOKEN` as a Vercel Secret in Preview and Production. After Replicate billing is ready, set `NOOR_VOICE_ENABLED=true` in the desired environment and redeploy. The server sends the last saved Noor reply to Replicate's official `resemble-ai/chatterbox-turbo` model with its built-in Abigail voice. The token stays on the server. Until voice is enabled, the voice control says Chatterbox is not connected and text chat still works. Only the most recent saved Noor reply can be spoken, with at most 10 voice requests per conversation and 20,000 characters per UTC day across the demo. Provider calls are counted even if generation fails; set a separate Replicate account spending limit. Replicate receives the reply text, and the audio is fetched through Noor's server.
 
+Passenger shortcuts include the fictional boarding time, draft baggage guidance, weather availability, and the fixed arrival note. Current weather questions can name a city, optionally with a state or country. Noor resolves it through Open-Meteo geocoding and shows the resolved place, source, and update time. Ambiguous place names need clarification. The fictional arrival forecast remains limited to Tokyo.
+
 The Vercel preview still cannot schedule email. Vercel functions do not keep the local Python workers or SQLite email scheduler running between requests. Do not present the fixed email note as sent or scheduled.
 
 Run `npm run build` and `npm run test:vercel` from the repository root to check the Vercel build and API flow locally. The generated `public/` directory is ignored by Git.
