@@ -6,7 +6,9 @@ const predictionEndpoint = 'https://api.replicate.com/v1/models/resemble-ai/chat
 const maxAudioBytes = 5_000_000;
 
 function available() {
-  return Boolean(process.env.REPLICATE_API_TOKEN) && supabaseEnabled();
+  return process.env.NOOR_VOICE_ENABLED === 'true'
+    && Boolean(process.env.REPLICATE_API_TOKEN)
+    && supabaseEnabled();
 }
 
 async function predictionRequest(url, options = {}) {

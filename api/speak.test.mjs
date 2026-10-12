@@ -19,12 +19,21 @@ function request(cookie, text, origin = 'https://noor.example') {
 }
 
 test('voice stays unavailable without a provider token', async () => {
+  process.env.NOOR_VOICE_ENABLED = 'true';
   delete process.env.REPLICATE_API_TOKEN;
   assert.deepEqual(await (await GET()).json(), { available: false });
   assert.equal((await POST(request('', 'Welcome aboard.'))).status, 503);
 });
 
+test('voice stays unavailable until explicitly enabled', async () => {
+  delete process.env.NOOR_VOICE_ENABLED;
+  process.env.REPLICATE_API_TOKEN = 'test-only-token';
+  assert.deepEqual(await (await GET()).json(), { available: false });
+  assert.equal((await POST(request('', 'Welcome aboard.'))).status, 503);
+});
+
 test('voice checks session reply and usage before generating Chatterbox audio', async () => {
+  process.env.NOOR_VOICE_ENABLED = 'true';
   process.env.REPLICATE_API_TOKEN = 'test-only-token';
   const id = randomUUID();
   const cookie = sessionIdCookie(id).split(';')[0];
@@ -57,6 +66,7 @@ test('voice checks session reply and usage before generating Chatterbox audio', 
 });
 
 test('voice limit blocks the provider call', async () => {
+  process.env.NOOR_VOICE_ENABLED = 'true';
   process.env.REPLICATE_API_TOKEN = 'test-only-token';
   let calls = 0;
   globalThis.fetch = async (url) => {
