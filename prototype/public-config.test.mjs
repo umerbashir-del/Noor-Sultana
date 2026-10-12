@@ -21,3 +21,14 @@ test('local settings keep loopback access available', () => {
   assert.equal(allowedOrigin(undefined, config), true);
   assert.doesNotMatch(cookieHeader('noor_session', '', 0, config.secureCookies), /; Secure/);
 });
+
+test('Render production uses its assigned HTTPS URL unless a custom origin is set', () => {
+  const config = createPublicConfig({
+    NODE_ENV: 'production', RENDER: 'true', RENDER_EXTERNAL_URL: 'https://noor-demo.onrender.com',
+  });
+  assert.equal(config.publicOrigin, 'https://noor-demo.onrender.com');
+  assert.equal(allowedOrigin('https://noor-demo.onrender.com', config), true);
+  assert.throws(() => createPublicConfig({
+    NODE_ENV: 'production', RENDER: 'true', RENDER_EXTERNAL_URL: 'http://noor-demo.onrender.com',
+  }), /HTTPS/);
+});

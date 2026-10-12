@@ -1,0 +1,23 @@
+# Single-instance Docker deployment. Review the paid plan before creating it.
+services:
+  - type: web
+    name: noor-sultana-demo
+    runtime: docker
+    branch: codex/noor-public-launch-prep
+    region: virginia
+    plan: 2c-8g
+    autoDeployTrigger: off
+    healthCheckPath: /healthz
+    disk:
+      name: noor-data
+      mountPath: /app/data
+      sizeGB: 5
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NOOR_SKIP_VOICE_WARMUP
+        value: "1"
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # Add RESEND_API_KEY and NOOR_EMAIL_FROM in Render only after the
+      # sending domain is verified. The app can launch without email sending.

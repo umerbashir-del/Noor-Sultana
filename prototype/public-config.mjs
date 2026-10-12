@@ -5,7 +5,8 @@ export function createPublicConfig(env = process.env) {
   const port = Number(env.PORT ?? 4173);
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('PORT must be a valid port number.');
   const host = env.NOOR_HOST || (production ? '0.0.0.0' : '127.0.0.1');
-  const origin = env.PUBLIC_ORIGIN || (production ? '' : `http://127.0.0.1:${port}`);
+  const renderOrigin = env.RENDER === 'true' ? env.RENDER_EXTERNAL_URL : '';
+  const origin = env.PUBLIC_ORIGIN || renderOrigin || (production ? '' : `http://127.0.0.1:${port}`);
   let parsed;
   try { parsed = new URL(origin); } catch { throw new Error('PUBLIC_ORIGIN must be an absolute website URL.'); }
   if (parsed.pathname !== '/' || parsed.search || parsed.hash || parsed.username || parsed.password) {
