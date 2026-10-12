@@ -95,6 +95,7 @@ let pendingUserMessage;
 let transcribeRequest;
 let recorder;
 let browserRecognition;
+let browserRecognitionDraft;
 let micStream;
 let micCheckStream;
 let micCheckRecorder;
@@ -750,6 +751,11 @@ function cancelPendingChat() {
 function finishRecording(discard = false) {
   if (discard) discardRecording = true;
   if (browserRecognition) {
+    if (discard) {
+      input.value = browserRecognitionDraft ?? '';
+      browserRecognitionDraft = undefined;
+      sendButton.disabled = !sessionReady;
+    }
     try {
       if (discard) browserRecognition.abort();
       else browserRecognition.stop();
@@ -781,6 +787,10 @@ function clearTranscriptReview(clearText = false) {
 }
 
 async function sendMessage(message) {
+  if (browserRecognition) {
+    micStatus.textContent = 'Press Done and review the transcript before sending.';
+    return;
+  }
   const cleanMessage = message.trim();
   if (!cleanMessage || !sessionReady || sendButton.disabled) return;
   if (cleanMessage.length > input.maxLength) {
@@ -956,6 +966,8 @@ function startBrowserRecognition() {
   interruptNoor();
   clearTranscriptReview(true);
   clearRecordingPreview();
+  browserRecognitionDraft = input.value;
+  input.value = '';
   if (voiceAvailable && !voiceEnabled) setVoiceEnabled(true, false);
   const session = ++micSequence;
   const recognition = new BrowserSpeechRecognition();
@@ -969,12 +981,15 @@ function startBrowserRecognition() {
   discardRecording = false;
   talkButton.disabled = true;
   doneButton.disabled = false;
+  sendButton.disabled = true;
   micStatus.textContent = 'Requesting microphone access…';
   recognition.onstart = () => {
-    if (session === micSequence) micStatus.textContent = 'Listening… press Done when you finish.';
+    if (session === micSequence) micStatus.textContent = 'Listening… words appear in the question field. Press Done when you finish.';
   };
   recognition.onresult = (event) => {
+    if (browserRecognition !== recognition || session !== micSequence || discardRecording) return;
     transcript = Array.from(event.results, (result) => result[0]?.transcript || '').join(' ').trim();
+    input.value = transcript;
   };
   recognition.onerror = (event) => {
     recognitionError = true;
@@ -991,9 +1006,15 @@ function startBrowserRecognition() {
     if (session !== micSequence) return;
     doneButton.disabled = true;
     talkButton.disabled = !canTalk();
-    if (discardRecording || recognitionError) return;
-    if (transcript) reviewTranscript(transcript);
-    else micStatus.textContent = 'No speech was recognized. Press Talk to try again, or type your question.';
+    sendButton.disabled = !sessionReady;
+    if (discardRecording || recognitionError || !transcript) {
+      input.value = browserRecognitionDraft ?? '';
+      browserRecognitionDraft = undefined;
+      if (!discardRecording && !recognitionError) micStatus.textContent = 'No speech was recognized. Press Talk to try again, or type your question.';
+      return;
+    }
+    browserRecognitionDraft = undefined;
+    reviewTranscript(transcript);
   };
   try {
     recognition.start();
@@ -1003,8 +1024,11 @@ function startBrowserRecognition() {
     }, 30_000);
   } catch {
     browserRecognition = undefined;
+    input.value = browserRecognitionDraft ?? '';
+    browserRecognitionDraft = undefined;
     doneButton.disabled = true;
     talkButton.disabled = !canTalk();
+    sendButton.disabled = !sessionReady;
     micStatus.textContent = 'Could not start the microphone. You can still type a question.';
   }
 }
