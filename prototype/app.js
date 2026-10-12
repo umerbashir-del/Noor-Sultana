@@ -8,6 +8,7 @@ const sourceLine = document.querySelector('#sourceLine');
 const knowledgeSources = document.querySelector('#knowledgeSources');
 const endConversationButton = document.querySelector('#endConversationButton');
 const sessionStatus = document.querySelector('#sessionStatus');
+const localDemoLink = document.querySelector('#localDemoLink');
 const weatherNowButton = document.querySelector('#weatherNowButton');
 const weatherArrivalButton = document.querySelector('#weatherArrivalButton');
 const arrivalEmailButton = document.querySelector('#arrivalEmailButton');
@@ -221,6 +222,13 @@ function canTalk() {
 }
 
 async function startSession(successMessage = 'Conversation ready. End it to clear this screen.') {
+  if (window.location.protocol === 'file:') {
+    sessionStatus.textContent = 'Open the local demo through Noor’s server to type or talk.';
+    localDemoLink.hidden = false;
+    voiceToggle.disabled = true;
+    voiceStatus.textContent = 'Voice needs Noor’s server too.';
+    return;
+  }
   sessionReady = false;
   clearTimeout(sessionTimer);
   input.disabled = true;
@@ -906,4 +914,4 @@ flightInfoButton.addEventListener('click', () => {
 });
 
 void startSession();
-void loadVoiceAvailability();
+if (window.location.protocol !== 'file:') void loadVoiceAvailability();
