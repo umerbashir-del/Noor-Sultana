@@ -63,3 +63,11 @@ test('sends a bounded Claude request and checks its reply', async () => {
     fetchImpl: async () => ({ ok: true, json: async () => ({ content: [] }) }),
   }), ClaudeUnavailable);
 });
+
+test('shows only the answer from a fenced response and rejects malformed JSON', async () => {
+  const args = { apiKey: 'test-key', model: 'test-model', system: 'Noor', messages: [] };
+  const response = (text) => async () => ({ ok: true, json: async () => ({ content: [{ type: 'text', text }] }) });
+  const good = await askClaude({ ...args, fetchImpl: response('```json\n{"reply":"Boarding begins at 8:00.","expression":"thoughtful"}\n```') });
+  assert.equal(good.reply, 'Boarding begins at 8:00.');
+  await assert.rejects(askClaude({ ...args, fetchImpl: response('{"reply": "Boarding begins at 8:00."') }), ClaudeUnavailable);
+});

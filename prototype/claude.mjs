@@ -78,11 +78,17 @@ export async function askClaude({ apiKey, model, system, messages, fetchImpl = f
   if (typeof text !== 'string' || !text.trim()) {
     throw new ClaudeUnavailable('Claude returned an empty response. Please try again.');
   }
+  const trimmed = text.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*\n([\s\S]*?)\n```$/i);
+  const content = fenced ? fenced[1].trim() : trimmed;
   let answer;
   try {
-    answer = JSON.parse(text);
+    answer = JSON.parse(content);
   } catch {
-    answer = { reply: text.trim(), expression: 'welcoming' };
+    if (fenced || /^[\[{]/.test(content) || /"reply"\s*:/.test(content)) {
+      throw new ClaudeUnavailable('Claude returned an unreadable response. Please try again.');
+    }
+    answer = { reply: content, expression: 'welcoming' };
   }
   if (typeof answer.reply !== 'string' || !answer.reply.trim()) {
     throw new ClaudeUnavailable('Claude returned an unreadable response. Please try again.');
