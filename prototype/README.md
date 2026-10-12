@@ -66,7 +66,7 @@ The repository root has a `Dockerfile` that installs Node, Python, Chatterbox, a
 
 ## Noor’s voice
 
-Click **Voice off** in the demo to turn on spoken replies. Noor’s next reply is synthesized locally with Chatterbox Turbo using `voice/noor-reference.wav`. Text chat still works if the voice model is unavailable.
+Click **Voice off** in the demo to turn on spoken replies. Noor’s next reply is synthesized locally with Chatterbox Turbo’s built-in voice. Text chat still works if the voice model is unavailable.
 
 Each conversation has its own speech job. Chatterbox processes jobs one at a time to fit the local voice model; a visitor's **Stop** button cancels only that visitor's job. If a job is already generating, the worker restarts before processing the next queued visitor. Voice requests require an active conversation session.
 
@@ -80,4 +80,4 @@ Talk automatically turns Noor's voice on. The microphone is active only between 
 
 The server uses the existing Chatterbox Python environment at `../chatterboc-demo/.venv/Scripts/python.exe`, which now also has `faster-whisper` installed. If you move this project or use another environment, set `CHATTERBOX_PYTHON` in `.env.local` to the full path of a Python executable with `chatterbox-tts`, PyTorch, torchaudio, and `faster-whisper` installed. You can set `ASR_PYTHON` separately if speech recognition uses another environment. The server starts loading Chatterbox when it launches, so the first spoken reply waits less if you allow that startup to finish. Later replies reuse the model. Microphone recordings are processed locally for transcription; the transcript is sent to Claude. The audio reference and generated speech are not sent to Claude.
 
-The included reference is a 12.5-second ElevenLabs Hope clip converted to mono 24 kHz, 16-bit PCM WAV. To try a different voice, replace `voice/noor-reference.wav` with another suitable reference WAV and restart `node server.mjs`. Chatterbox follows the reference voice and its delivery, so use a clip with the accent and style you want Noor to speak.
+The optional local reference is a 12.5-second ElevenLabs Hope clip converted to mono 24 kHz, 16-bit PCM WAV. To use it, set `NOOR_VOICE_REFERENCE=voice/noor-reference.wav` in `.env.local` and restart `node server.mjs`. You can point that setting to another suitable WAV. Chatterbox follows the reference voice and its delivery, so use a clip with the accent and style you want Noor to speak. The hosted Replicate voice named Abigail is separate from the local built-in voice, so the two may sound different.
