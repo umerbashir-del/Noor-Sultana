@@ -38,16 +38,86 @@
             <p class="user-line" id="userLine" hidden><span class="speaker">YOU</span><span id="userText"></span></p>
             <p class="noor-line"><span class="speaker">NOOR</span><span id="responseText">Hi, I’m Noor. Ask me about this flight.</span></p>
             <p class="source-line" id="sourceLine">Fictional flight information · Not live</p>
+            <div class="knowledge-sources" id="knowledgeSources" hidden></div>
           </div>
+          <div class="weather-controls" aria-label="Passenger shortcuts">
+            <button class="weather-button" id="weatherNowButton" type="button" disabled>Tokyo weather now</button>
+            <button class="weather-button" id="weatherArrivalButton" type="button" disabled>Weather at sample arrival</button>
+            <button class="weather-button" id="arrivalEmailButton" type="button" disabled>Arrival email draft</button>
+          </div>
+          <aside class="weather-card" id="weatherCard" hidden aria-live="polite" aria-label="Destination weather">
+            <strong id="weatherTitle">Tokyo Haneda area</strong>
+            <span id="weatherSummary"></span>
+            <small id="weatherTimes"></small>
+            <small id="weatherStatus"></small>
+            <small>Weather: <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo</a> · Flight details are fictional · Not aviation guidance</small>
+          </aside>
+          <section class="email-card" id="emailCard" hidden aria-label="Arrival email draft">
+            <div class="email-card-heading"><strong>Arrival email draft</strong><button id="closeEmailButton" type="button" aria-label="Close email draft">Close</button></div>
+            <p>Verify your address, choose a send time, and review the exact email before scheduling.</p>
+            <label for="emailRecipient">Your email address</label>
+            <div class="email-review-controls">
+              <input id="emailRecipient" type="email" maxlength="254" autocomplete="off" spellcheck="false" placeholder="you@example.com" />
+              <button id="sendEmailCodeButton" type="button">Send verification code</button>
+            </div>
+            <div class="email-review-controls" id="emailCodeControls" hidden>
+              <label for="emailCode">Six-digit code</label>
+              <input id="emailCode" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="000000" />
+              <button id="verifyEmailCodeButton" type="button">Verify address</button>
+            </div>
+            <label for="emailSendTime">Send time (your local time)</label>
+            <div class="email-review-controls">
+              <input id="emailSendTime" type="datetime-local" />
+              <button id="reviewEmailButton" type="button" disabled>Review full email</button>
+            </div>
+            <p id="emailStatus" role="status">Enter your address to receive a verification code.</p>
+            <div class="email-jobs" id="emailJobs" hidden>
+              <strong>Email requests for your verified address</strong>
+              <ul id="emailJobList"></ul>
+            </div>
+          </section>
           <form class="message-form" id="messageForm">
             <label class="visually-hidden" for="messageInput">Type a message for Noor</label>
-            <input id="messageInput" name="message" type="text" maxlength="500" autocomplete="off" placeholder="Ask Noor something…" />
-            <button class="send-button" type="submit" aria-label="Send message">Send <span aria-hidden="true">↗</span></button>
+            <input id="messageInput" name="message" type="text" maxlength="500" autocomplete="off" placeholder="Ask Noor something…" disabled />
+            <button class="send-button" type="submit" aria-label="Send message" disabled>Send <span aria-hidden="true">↗</span></button>
           </form>
+          <div class="session-controls">
+            <button class="session-button" id="endConversationButton" type="button" disabled>End conversation</button>
+            <span id="sessionStatus" role="status">Starting conversation…</span>
+          </div>
+          <div class="voice-controls">
+            <button class="voice-button" id="voiceToggle" type="button" aria-pressed="false">🔇 Voice off</button>
+            <span id="voiceStatus" role="status">Turn on voice to hear Noor’s replies.</span>
+          </div>
+          <div class="mic-controls" aria-label="Voice conversation controls">
+            <button class="mic-button" id="talkButton" type="button" disabled>🎙 Talk</button>
+            <button class="mic-button" id="doneButton" type="button" disabled>Done</button>
+            <button class="mic-button stop-button" id="stopButton" type="button">Stop</button>
+            <span id="micStatus" role="status">Press Talk to ask Noor a question.</span>
+          </div>
           <p class="demo-note">For urgent help, contact cabin crew.</p>
         </section>
       </section>
     </main>
+    <dialog class="email-review-dialog" id="emailReviewDialog" aria-labelledby="emailReviewTitle" aria-describedby="emailReviewNotice">
+      <div class="review-heading">
+        <span class="review-step">EMAIL DRAFT · REVIEW</span>
+        <h2 id="emailReviewTitle" tabindex="-1">Review your arrival email</h2>
+        <p id="emailReviewNotice">Check every detail. The email will be scheduled only when you select Confirm schedule.</p>
+      </div>
+      <dl class="review-details">
+        <div><dt>To</dt><dd id="emailReviewTo"></dd></div>
+        <div><dt>Subject</dt><dd id="emailReviewSubject"></dd></div>
+        <div><dt>Send time</dt><dd id="emailReviewSendTime"></dd></div>
+        <div><dt>Attachments</dt><dd>None</dd></div>
+      </dl>
+      <div class="review-message"><h3>Complete message</h3><pre id="emailReviewBody"></pre></div>
+      <div class="review-actions">
+        <button id="editEmailAddressButton" type="button">Edit address</button>
+        <button id="closeReviewButton" type="button">Close review</button>
+        <button id="confirmScheduleButton" type="button">Confirm schedule</button>
+      </div>
+    </dialog>
     <script src="./app.js" defer></script>
   </body>
 </html>

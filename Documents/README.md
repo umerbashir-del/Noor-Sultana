@@ -7,3 +7,5 @@ This folder holds the product notes and supporting documents for the Noor Sultan
 The current PRD is maintained as a Google Doc: [AI agent PRD](https://docs.google.com/document/d/1DRyTAUEr5OJAxn74JRIA0d0NzAgnldxgB7L7HlPXCxA/edit?tab=t.0).
 
 See [PRD-SUMMARY.md](PRD-SUMMARY.md) for the agreed scope, current decisions, and open questions. Keep the Google Doc as the source of truth; update the summary when the PRD changes.
+
+The [passenger knowledge library](knowledge/README.md) contains draft FAQ topics for Noor. The local demo can use them for general guidance with a visible draft source link. Airline-specific policy claims still need review and approval.
