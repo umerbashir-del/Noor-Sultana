@@ -6,6 +6,9 @@
   "functions": {
     "api/chat.mjs": {
       "includeFiles": "Documents/knowledge/*.md"
+    },
+    "api/speak.mjs": {
+      "includeFiles": "prototype/voice/noor-reference.wav"
     }
   },
   "headers": [

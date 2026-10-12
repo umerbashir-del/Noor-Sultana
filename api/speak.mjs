@@ -1,9 +1,18 @@
+import { readFile } from 'node:fs/promises';
 import { sessionIdFrom } from '../lib/vercel-session.mjs';
 import { reserveStoredVoice, supabaseEnabled } from '../lib/supabase-store.mjs';
 import { json, sameOrigin } from '../lib/vercel-shared.mjs';
 
 const predictionEndpoint = 'https://api.replicate.com/v1/models/resemble-ai/chatterbox-turbo/predictions';
 const maxAudioBytes = 5_000_000;
+let hopeReferencePromise;
+
+function hopeReference() {
+  hopeReferencePromise ||= readFile(new URL('../prototype/voice/noor-reference.wav', import.meta.url))
+    .then((audio) => `data:audio/wav;base64,${audio.toString('base64')}`)
+    .catch((error) => { hopeReferencePromise = undefined; throw error; });
+  return hopeReferencePromise;
+}
 
 export function browserCompatibleWav(input) {
   const bytes = new Uint8Array(input);
@@ -101,10 +110,11 @@ export async function POST(request) {
   if (reserved !== 'ok') return json({ error: 'This reply is no longer available to speak.' }, 409);
 
   try {
+    const referenceAudio = await hopeReference();
     let prediction = await predictionRequest(predictionEndpoint, {
       method: 'POST',
       headers: { 'content-type': 'application/json', prefer: 'wait=30', 'cancel-after': '45s' },
-      body: JSON.stringify({ input: { text, voice: 'Abigail' } }),
+      body: JSON.stringify({ input: { text, reference_audio: referenceAudio } }),
     });
     for (let attempt = 0; attempt < 6 && !prediction.output && ['starting', 'processing'].includes(prediction.status); attempt += 1) {
       if (typeof prediction.id !== 'string' || !/^[a-z0-9]+$/.test(prediction.id)) break;

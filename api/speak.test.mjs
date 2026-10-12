@@ -79,7 +79,13 @@ test('voice checks session reply and usage before generating Chatterbox audio', 
     }
     if (String(url).endsWith('/models/resemble-ai/chatterbox-turbo/predictions')) {
       assert.equal(options.headers.authorization, 'Bearer test-only-token');
-      assert.deepEqual(JSON.parse(options.body).input, { text, voice: 'Abigail' });
+      const input = JSON.parse(options.body).input;
+      assert.equal(input.text, text);
+      assert.equal('voice' in input, false);
+      assert.match(input.reference_audio, /^data:audio\/wav;base64,/);
+      const reference = Buffer.from(input.reference_audio.split(',')[1], 'base64');
+      assert.equal(reference.toString('ascii', 0, 4), 'RIFF');
+      assert.ok(reference.length > 500_000);
       return Response.json({ status: 'succeeded', output: 'https://replicate.delivery/voice.wav' });
     }
     if (String(url) === 'https://replicate.delivery/voice.wav') return new Response(wav);
