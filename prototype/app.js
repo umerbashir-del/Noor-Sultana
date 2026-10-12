@@ -79,6 +79,8 @@ let sessionTimer;
 let idleDeadline = 0;
 let absoluteDeadline = 0;
 const voiceAudio = new Audio();
+let voiceContext;
+let voiceSource;
 let voiceEnabled = false;
 let voiceAvailable = !vercelPreview;
 let voiceRequest;
@@ -108,6 +110,12 @@ function stopSpeech() {
   voiceGeneration += 1;
   voiceRequest?.abort();
   voiceRequest = undefined;
+  if (voiceSource) {
+    voiceSource.onended = null;
+    try { voiceSource.stop(); } catch { /* The source may have finished already. */ }
+    voiceSource.disconnect();
+    voiceSource = undefined;
+  }
   voiceAudio.pause();
   voiceAudio.removeAttribute('src');
   voiceAudio.load();
@@ -161,6 +169,15 @@ async function cancelSynthesis() {
   try { await fetch('/api/stop', { method: 'POST' }); } catch { /* Local server may be unavailable. */ }
 }
 
+function unlockVoicePlayback() {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return;
+  try {
+    voiceContext ||= new AudioContextClass();
+    if (voiceContext.state !== 'running') void voiceContext.resume().catch(() => {});
+  } catch { /* The Play reply button remains available. */ }
+}
+
 async function speakReply(text) {
   stopSpeech();
   if (!voiceEnabled) return;
@@ -171,7 +188,7 @@ async function speakReply(text) {
   const generation = voiceGeneration;
   const controller = new AbortController();
   voiceRequest = controller;
-  voiceStatus.textContent = 'Preparing Noor’s voice…';
+  voiceStatus.textContent = 'Generating Noor’s voice… This may take a few seconds.';
   try {
     const response = await fetch('/api/speak', {
       method: 'POST',
@@ -186,6 +203,25 @@ async function speakReply(text) {
     const audio = await response.blob();
     if (generation !== voiceGeneration || !voiceEnabled) return;
     voiceRequest = undefined;
+    if (voiceContext?.state === 'running') {
+      try {
+        const decoded = await voiceContext.decodeAudioData(await audio.arrayBuffer());
+        if (generation !== voiceGeneration || !voiceEnabled) return;
+        const source = voiceContext.createBufferSource();
+        source.buffer = decoded;
+        source.connect(voiceContext.destination);
+        source.onended = () => {
+          if (voiceSource !== source) return;
+          voiceSource = undefined;
+          source.disconnect();
+          voiceStatus.textContent = 'Voice on';
+        };
+        voiceSource = source;
+        source.start();
+        voiceStatus.textContent = 'Noor is speaking. Press Stop to interrupt.';
+        return;
+      } catch { /* Fall back to the browser audio element. */ }
+    }
     voiceUrl = URL.createObjectURL(audio);
     voiceAudio.src = voiceUrl;
     voiceStatus.textContent = 'Noor is speaking. Press Stop to interrupt.';
@@ -224,6 +260,7 @@ function setVoiceEnabled(enabled, replay = true) {
   voiceToggle.setAttribute('aria-pressed', String(enabled));
   voiceToggle.textContent = enabled ? '🔊 Voice on' : '🔇 Voice off';
   if (enabled) {
+    unlockVoicePlayback();
     voiceStatus.textContent = 'Noor will speak her replies.';
     if (replay && conversation.at(-1)?.role === 'assistant') speakReply(conversation.at(-1).content);
   } else {

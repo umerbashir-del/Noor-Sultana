@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
 import { sessionIdCookie } from '../lib/vercel-session.mjs';
-import { GET, POST } from './speak.mjs';
+import { browserCompatibleWav, GET, POST } from './speak.mjs';
 
 process.env.NOOR_SESSION_SECRET = randomBytes(32).toString('hex');
 process.env.SUPABASE_URL = 'https://demo.supabase.co';
@@ -17,6 +17,36 @@ function request(cookie, text, origin = 'https://noor.example') {
     body: JSON.stringify({ text }),
   });
 }
+
+function floatWav(samples) {
+  const buffer = new ArrayBuffer(44 + samples.length * 4);
+  const wav = new DataView(buffer);
+  wav.setUint32(0, 0x52494646, false);
+  wav.setUint32(4, buffer.byteLength - 8, true);
+  wav.setUint32(8, 0x57415645, false);
+  wav.setUint32(12, 0x666d7420, false);
+  wav.setUint32(16, 16, true);
+  wav.setUint16(20, 3, true);
+  wav.setUint16(22, 1, true);
+  wav.setUint32(24, 24000, true);
+  wav.setUint32(28, 96000, true);
+  wav.setUint16(32, 4, true);
+  wav.setUint16(34, 32, true);
+  wav.setUint32(36, 0x64617461, false);
+  wav.setUint32(40, samples.length * 4, true);
+  samples.forEach((sample, index) => wav.setFloat32(44 + index * 4, sample, true));
+  return buffer;
+}
+
+test('converts provider float WAV samples to browser compatible PCM', () => {
+  const pcm = new DataView(browserCompatibleWav(floatWav([-1, -0.5, 0, 0.5, 1])));
+  assert.equal(pcm.getUint16(20, true), 1);
+  assert.equal(pcm.getUint16(34, true), 16);
+  assert.equal(pcm.getUint32(24, true), 24000);
+  assert.equal(pcm.getUint32(40, true), 10);
+  assert.deepEqual(Array.from({ length: 5 }, (_, index) => pcm.getInt16(44 + index * 2, true)),
+    [-32768, -16384, 0, 16384, 32767]);
+});
 
 test('voice stays unavailable without a provider token', async () => {
   process.env.NOOR_VOICE_ENABLED = 'true';
@@ -38,7 +68,7 @@ test('voice checks session reply and usage before generating Chatterbox audio', 
   const id = randomUUID();
   const cookie = sessionIdCookie(id).split(';')[0];
   const text = 'Welcome aboard.';
-  const wav = new Uint8Array([82, 73, 70, 70, 1, 2, 3, 4]);
+  const wav = new Uint8Array(floatWav([0, 0.5, -0.5]));
   const calls = [];
   globalThis.fetch = async (url, options) => {
     calls.push(String(url));
@@ -61,7 +91,10 @@ test('voice checks session reply and usage before generating Chatterbox audio', 
   const response = await POST(request(cookie, text));
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('content-type'), 'audio/wav');
-  assert.deepEqual(new Uint8Array(await response.arrayBuffer()), wav);
+  const returned = new DataView(await response.arrayBuffer());
+  assert.equal(returned.getUint16(20, true), 1);
+  assert.equal(returned.getUint16(34, true), 16);
+  assert.equal(returned.getInt16(46, true), 16384);
   assert.equal(calls.length, 3);
 });
 
