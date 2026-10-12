@@ -41,6 +41,7 @@ const noor = document.querySelector('#noorWrap');
 const flightCard = document.querySelector('#flightCard');
 const flightInfoButton = document.querySelector('#flightInfoButton');
 const voiceToggle = document.querySelector('#voiceToggle');
+const playReplyButton = document.querySelector('#playReplyButton');
 const voiceStatus = document.querySelector('#voiceStatus');
 const talkButton = document.querySelector('#talkButton');
 const doneButton = document.querySelector('#doneButton');
@@ -78,8 +79,6 @@ let pendingUserMessage;
 let transcribeRequest;
 let recorder;
 let browserRecognition;
-let browserTranscript = '';
-let browserRecognitionError = false;
 let micStream;
 let discardRecording = false;
 let recordTimeout;
@@ -101,6 +100,7 @@ function stopSpeech() {
   voiceAudio.load();
   if (voiceUrl) URL.revokeObjectURL(voiceUrl);
   voiceUrl = undefined;
+  playReplyButton.hidden = true;
 }
 
 async function cancelSynthesis() {
@@ -135,7 +135,11 @@ async function speakReply(text) {
     voiceUrl = URL.createObjectURL(audio);
     voiceAudio.src = voiceUrl;
     voiceStatus.textContent = 'Noor is speaking. Press Stop to interrupt.';
-    await voiceAudio.play();
+    try { await voiceAudio.play(); }
+    catch {
+      playReplyButton.hidden = false;
+      voiceStatus.textContent = 'Audio is ready. Press Play reply to hear Noor.';
+    }
   } catch (error) {
     if (error.name !== 'AbortError' && generation === voiceGeneration) {
       voiceStatus.textContent = vercelPreview ? error.message : 'Voice unavailable. Check the server window or try again.';
@@ -149,6 +153,15 @@ voiceAudio.addEventListener('ended', () => {
   if (voiceUrl) URL.revokeObjectURL(voiceUrl);
   voiceUrl = undefined;
   voiceStatus.textContent = 'Voice on';
+  playReplyButton.hidden = true;
+});
+
+playReplyButton.addEventListener('click', async () => {
+  try {
+    await voiceAudio.play();
+    playReplyButton.hidden = true;
+    voiceStatus.textContent = 'Noor is speaking. Press Stop to interrupt.';
+  } catch { voiceStatus.textContent = 'Your browser could not play this audio.'; }
 });
 
 function setVoiceEnabled(enabled, replay = true) {
@@ -524,8 +537,10 @@ function cancelPendingChat() {
 function finishRecording(discard = false) {
   if (discard) discardRecording = true;
   if (browserRecognition) {
-    if (discard) browserRecognition.abort();
-    else browserRecognition.stop();
+    try {
+      if (discard) browserRecognition.abort();
+      else browserRecognition.stop();
+    } catch { /* Recognition may already have stopped. */ }
     doneButton.disabled = true;
     talkButton.disabled = true;
     return;
@@ -724,8 +739,8 @@ function startBrowserRecognition() {
   recognition.interimResults = true;
   recognition.maxAlternatives = 1;
   browserRecognition = recognition;
-  browserTranscript = '';
-  browserRecognitionError = false;
+  let transcript = '';
+  let recognitionError = false;
   discardRecording = false;
   talkButton.disabled = true;
   doneButton.disabled = false;
@@ -734,10 +749,10 @@ function startBrowserRecognition() {
     if (session === micSequence) micStatus.textContent = 'Listening… press Done when you finish.';
   };
   recognition.onresult = (event) => {
-    browserTranscript = Array.from(event.results, (result) => result[0]?.transcript || '').join(' ').trim();
+    transcript = Array.from(event.results, (result) => result[0]?.transcript || '').join(' ').trim();
   };
   recognition.onerror = (event) => {
-    browserRecognitionError = true;
+    recognitionError = true;
     if (session === micSequence && !discardRecording) {
       micStatus.textContent = event.error === 'not-allowed'
         ? 'Microphone permission was denied. Check browser settings, or type your question.'
@@ -745,12 +760,14 @@ function startBrowserRecognition() {
     }
   };
   recognition.onend = () => {
+    if (browserRecognition !== recognition) return;
     clearTimeout(recordTimeout);
-    if (browserRecognition === recognition) browserRecognition = undefined;
+    browserRecognition = undefined;
+    if (session !== micSequence) return;
     doneButton.disabled = true;
     talkButton.disabled = !canTalk();
-    if (session !== micSequence || discardRecording || browserRecognitionError) return;
-    if (browserTranscript) reviewTranscript(browserTranscript);
+    if (discardRecording || recognitionError) return;
+    if (transcript) reviewTranscript(transcript);
     else micStatus.textContent = 'No speech was recognized. Press Talk to try again, or type your question.';
   };
   try {
