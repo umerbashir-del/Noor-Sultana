@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { setTimeout as delay } from 'node:timers/promises';
 import { sessionIdFrom } from '../lib/vercel-session.mjs';
 import { reserveStoredVoice, supabaseEnabled } from '../lib/supabase-store.mjs';
 import { json, sameOrigin } from '../lib/vercel-shared.mjs';
@@ -74,11 +75,11 @@ function available() {
     && supabaseEnabled();
 }
 
-async function predictionRequest(url, options = {}) {
+async function predictionRequest(url, options = {}, signal) {
   const response = await fetch(url, {
     ...options,
     headers: { authorization: `Bearer ${process.env.REPLICATE_API_TOKEN}`, ...options.headers },
-    signal: AbortSignal.timeout(45_000),
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(45_000)]) : AbortSignal.timeout(45_000),
   });
   if (!response.ok) throw new Error(`Voice provider returned ${response.status}`);
   return response.json();
@@ -89,7 +90,7 @@ export async function GET() {
   catch { return json({ available: false }); }
 }
 
-export async function POST(request) {
+export async function POST(request, context) {
   if (!sameOrigin(request)) return json({ error: 'Request origin is not allowed.' }, 403);
   if (!available()) return json({ error: 'Chatterbox voice is not connected yet.' }, 503);
   if (Number(request.headers.get('content-length')) > 2500) return json({ error: 'Voice request is too long.' }, 400);
@@ -109,36 +110,59 @@ export async function POST(request) {
   if (reserved === 'limit') return json({ error: 'The demo voice has reached its usage limit. Text chat still works.' }, 429);
   if (reserved !== 'ok') return json({ error: 'This reply is no longer available to speak.' }, 409);
 
+  let predictionId;
+  let predictionRunning = false;
+  let stage = 'reference';
   try {
     const referenceAudio = await hopeReference();
+    if (request.signal.aborted) return new Response(null, { status: 204 });
+    stage = 'prediction_create';
     let prediction = await predictionRequest(predictionEndpoint, {
       method: 'POST',
       headers: { 'content-type': 'application/json', prefer: 'wait=30', 'cancel-after': '45s' },
       body: JSON.stringify({ input: { text, reference_audio: referenceAudio } }),
     });
+    if (typeof prediction.id === 'string' && /^[a-z0-9]+$/.test(prediction.id)) predictionId = prediction.id;
+    predictionRunning = ['starting', 'processing'].includes(prediction.status);
+    if (request.signal.aborted) throw new Error('Voice request stopped.');
+    stage = 'prediction_wait';
     for (let attempt = 0; attempt < 6 && !prediction.output && ['starting', 'processing'].includes(prediction.status); attempt += 1) {
       if (typeof prediction.id !== 'string' || !/^[a-z0-9]+$/.test(prediction.id)) break;
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      prediction = await predictionRequest(`https://api.replicate.com/v1/predictions/${prediction.id}`);
+      await delay(1500, undefined, { signal: request.signal });
+      prediction = await predictionRequest(`https://api.replicate.com/v1/predictions/${prediction.id}`, {}, request.signal);
+      predictionRunning = ['starting', 'processing'].includes(prediction.status);
     }
-    if (typeof prediction.output !== 'string') throw new Error('Voice prediction did not return audio');
+    if (typeof prediction.output !== 'string') throw new Error(`Voice prediction ended as ${prediction.status || 'unknown'} without audio`);
+    stage = 'audio_download';
     const audioUrl = new URL(prediction.output);
     if (audioUrl.protocol !== 'https:' || !(
       audioUrl.hostname === 'replicate.delivery' || audioUrl.hostname.endsWith('.replicate.delivery')
     )) {
       throw new Error('Unexpected voice audio URL');
     }
-    const audioResponse = await fetch(audioUrl, { signal: AbortSignal.timeout(15_000) });
+    const audioResponse = await fetch(audioUrl, {
+      signal: AbortSignal.any([request.signal, AbortSignal.timeout(15_000)]),
+    });
     if (!audioResponse.ok || Number(audioResponse.headers.get('content-length')) > maxAudioBytes) {
       throw new Error('Voice audio unavailable');
     }
     const audio = await audioResponse.arrayBuffer();
     if (!audio.byteLength || audio.byteLength > maxAudioBytes) throw new Error('Invalid voice audio');
+    stage = 'audio_decode';
     return new Response(browserCompatibleWav(audio), { headers: {
       'content-type': 'audio/wav', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff',
     } });
   } catch (error) {
-    console.error('[Chatterbox]', error?.message);
+    if (request.signal.aborted) {
+      if (predictionId && predictionRunning) {
+        const cancellation = predictionRequest(`https://api.replicate.com/v1/predictions/${predictionId}/cancel`, { method: 'POST' })
+          .catch((cancelError) => { console.error('[Chatterbox] cancellation failed:', cancelError?.message); });
+        context?.waitUntil?.(cancellation);
+        await cancellation;
+      }
+      return new Response(null, { status: 204 });
+    }
+    console.error('[Chatterbox]', stage, error?.message);
     return json({ error: 'Chatterbox could not speak this reply. Please try again.' }, 502);
   }
 }
