@@ -56,6 +56,7 @@ const stopButton = document.querySelector('#stopButton');
 const micStatus = document.querySelector('#micStatus');
 const micDeviceControls = document.querySelector('#micDeviceControls');
 const micDeviceSelect = document.querySelector('#micDeviceSelect');
+const checkMicButton = document.querySelector('#checkMicButton');
 const playRecordingButton = document.querySelector('#playRecordingButton');
 const transcriptReview = document.querySelector('#transcriptReview');
 const vercelPreview = document.documentElement.dataset.vercelPreview === 'true';
@@ -63,7 +64,8 @@ const BrowserSpeechRecognition = window.SpeechRecognition || window.webkitSpeech
 
 if (vercelPreview) {
   arrivalEmailButton.hidden = true;
-  micDeviceControls.hidden = true;
+  micDeviceControls.hidden = !navigator.mediaDevices?.getUserMedia || !window.MediaRecorder;
+  checkMicButton.hidden = micDeviceControls.hidden;
   voiceToggle.disabled = true;
   voiceStatus.textContent = 'Checking Chatterbox voice…';
   if (!BrowserSpeechRecognition) {
@@ -94,6 +96,10 @@ let transcribeRequest;
 let recorder;
 let browserRecognition;
 let micStream;
+let micCheckStream;
+let micCheckRecorder;
+let micCheckTimer;
+let micCheckSequence = 0;
 const recordedAudio = new Audio();
 let recordedAudioUrl;
 let discardRecording = false;
@@ -152,7 +158,7 @@ playRecordingButton.addEventListener('click', async () => {
   }
 });
 recordedAudio.addEventListener('ended', () => {
-  micStatus.textContent = 'Recording finished. If it was silent, choose another microphone and try Talk again.';
+  micStatus.textContent = 'Recording finished. If it was silent, choose another microphone and check again. Chrome speech recognition uses its default input.';
 });
 
 async function listMicrophones(stream) {
@@ -166,6 +172,78 @@ async function listMicrophones(stream) {
     if (devices.some((device) => device.deviceId === selected)) micDeviceSelect.value = selected;
   } catch { /* Device names may be unavailable in this browser. */ }
 }
+
+function stopMicCheck() {
+  micCheckSequence += 1;
+  clearTimeout(micCheckTimer);
+  if (micCheckRecorder?.state === 'recording') micCheckRecorder.stop();
+  micCheckStream?.getTracks().forEach((track) => track.stop());
+  micCheckRecorder = undefined;
+  micCheckStream = undefined;
+  checkMicButton.disabled = false;
+  micDeviceSelect.disabled = false;
+  talkButton.disabled = !canTalk();
+}
+
+async function checkMicrophone() {
+  if (micCheckRecorder || !navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) return;
+  micSequence += 1;
+  finishRecording(true);
+  interruptNoor();
+  clearTranscriptReview(true);
+  clearRecordingPreview();
+  const sequence = ++micCheckSequence;
+  checkMicButton.disabled = true;
+  micDeviceSelect.disabled = true;
+  talkButton.disabled = true;
+  micStatus.textContent = 'Recording a four-second microphone check…';
+  try {
+    const deviceId = micDeviceSelect.value;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: deviceId ? { deviceId: { ideal: deviceId } } : true });
+    if (sequence !== micCheckSequence) {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+    micCheckStream = stream;
+    await listMicrophones(stream);
+    if (sequence !== micCheckSequence) return;
+    const preferred = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
+    const mimeType = preferred.find((type) => MediaRecorder.isTypeSupported(type));
+    const activeRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    micCheckRecorder = activeRecorder;
+    const chunks = [];
+    activeRecorder.addEventListener('dataavailable', (event) => {
+      if (event.data.size) chunks.push(event.data);
+    });
+    activeRecorder.addEventListener('stop', () => {
+      stream.getTracks().forEach((track) => track.stop());
+      if (micCheckStream === stream) micCheckStream = undefined;
+      if (micCheckRecorder === activeRecorder) micCheckRecorder = undefined;
+      if (sequence !== micCheckSequence) return;
+      clearTimeout(micCheckTimer);
+      checkMicButton.disabled = false;
+      micDeviceSelect.disabled = false;
+      talkButton.disabled = !canTalk();
+      const blob = new Blob(chunks, { type: activeRecorder.mimeType || mimeType || 'audio/webm' });
+      if (!blob.size) {
+        micStatus.textContent = 'The microphone check captured no audio. Choose another microphone and try again.';
+        return;
+      }
+      keepRecordingPreview(blob);
+      micStatus.textContent = 'Microphone check ready. Press Check recording to hear it. This recording stays in your browser.';
+    }, { once: true });
+    activeRecorder.start();
+    micCheckTimer = window.setTimeout(() => {
+      if (activeRecorder.state === 'recording') activeRecorder.stop();
+    }, 4000);
+  } catch (error) {
+    if (sequence !== micCheckSequence) return;
+    stopMicCheck();
+    micStatus.textContent = `Microphone check could not start (${error.name || 'unknown error'}). Check Chrome's input device and try again.`;
+  }
+}
+
+checkMicButton.addEventListener('click', checkMicrophone);
 
 async function cancelSynthesis() {
   if (vercelPreview) return;
@@ -933,6 +1011,7 @@ function startBrowserRecognition() {
 
 async function startRecording() {
   if (!sessionReady || recorder?.state === 'recording' || talkButton.disabled) return;
+  stopMicCheck();
   if (vercelPreview) return startBrowserRecognition();
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
     micStatus.textContent = 'This browser cannot record your microphone. You can still type a question.';
@@ -1002,6 +1081,7 @@ doneButton.addEventListener('click', () => {
   finishRecording(false);
 });
 stopButton.addEventListener('click', () => {
+  stopMicCheck();
   micSequence += 1;
   finishRecording(true);
   interruptNoor();
@@ -1023,6 +1103,7 @@ form.addEventListener('submit', (event) => {
 
 async function endConversation() {
   if (!sessionReady) return startSession();
+  stopMicCheck();
   sessionReady = false;
   clearTimeout(sessionTimer);
   micSequence += 1;
