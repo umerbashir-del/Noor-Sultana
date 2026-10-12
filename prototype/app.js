@@ -47,6 +47,14 @@ const doneButton = document.querySelector('#doneButton');
 const stopButton = document.querySelector('#stopButton');
 const micStatus = document.querySelector('#micStatus');
 const transcriptReview = document.querySelector('#transcriptReview');
+const vercelPreview = document.documentElement.dataset.vercelPreview === 'true';
+
+if (vercelPreview) {
+  arrivalEmailButton.hidden = true;
+  voiceToggle.closest('.voice-controls').hidden = true;
+  talkButton.closest('.mic-controls').hidden = true;
+  voiceToggle.disabled = true;
+}
 
 const conversation = [];
 const maxTurns = 12;
@@ -186,10 +194,10 @@ async function startSession(successMessage = 'Conversation ready. End it to clea
     scheduleSessionEnd();
     input.disabled = false;
     sendButton.disabled = false;
-    talkButton.disabled = !sessionReady;
+    talkButton.disabled = vercelPreview || !sessionReady;
     weatherNowButton.disabled = false;
     weatherArrivalButton.disabled = false;
-    arrivalEmailButton.disabled = false;
+    arrivalEmailButton.disabled = vercelPreview;
     endConversationButton.disabled = false;
     endConversationButton.textContent = 'End conversation';
     sessionStatus.textContent = successMessage;
@@ -474,7 +482,7 @@ function cancelPendingChat() {
   sendButton.disabled = !sessionReady;
   weatherNowButton.disabled = !sessionReady;
   weatherArrivalButton.disabled = !sessionReady;
-  arrivalEmailButton.disabled = !sessionReady;
+  arrivalEmailButton.disabled = vercelPreview || !sessionReady;
   noor.removeAttribute('aria-busy');
 }
 
@@ -609,10 +617,10 @@ async function sendMessage(message) {
       noor.removeAttribute('aria-busy');
       input.disabled = !sessionReady;
       sendButton.disabled = !sessionReady;
-      talkButton.disabled = !sessionReady;
+      talkButton.disabled = vercelPreview || !sessionReady;
       weatherNowButton.disabled = !sessionReady;
       weatherArrivalButton.disabled = !sessionReady;
-      arrivalEmailButton.disabled = !sessionReady;
+      arrivalEmailButton.disabled = vercelPreview || !sessionReady;
       if (sessionReady) (focusEmailAfterReply ? emailRecipient : input).focus();
     }
   }

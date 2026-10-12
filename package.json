@@ -1,0 +1,9 @@
+{
+  "name": "noor-vercel-preview",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build-vercel.mjs",
+    "test:vercel": "node --test api/*.test.mjs"
+  }
+}
