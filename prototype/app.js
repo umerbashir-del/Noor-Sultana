@@ -86,6 +86,7 @@ let voiceAvailable = !vercelPreview;
 let voiceRequest;
 let voiceUrl;
 let voiceGeneration = 0;
+let voiceRestartAfter = 0;
 let chatRequest;
 let chatSequence = 0;
 let pendingUserMessage;
@@ -108,6 +109,7 @@ let emailPollTimer;
 
 function stopSpeech() {
   voiceGeneration += 1;
+  if (vercelPreview && voiceRequest) voiceRestartAfter = Date.now() + 1500;
   voiceRequest?.abort();
   voiceRequest = undefined;
   if (voiceSource) {
@@ -191,6 +193,13 @@ async function speakReply(text) {
   voiceRequest = controller;
   voiceStatus.textContent = 'Generating Noor’s voice… This may take a few seconds.';
   try {
+    const waitForPrevious = voiceRestartAfter - Date.now();
+    if (vercelPreview && waitForPrevious > 0) {
+      voiceStatus.textContent = 'Stopping the previous voice before starting this reply…';
+      await new Promise((resolve) => window.setTimeout(resolve, waitForPrevious));
+      if (generation !== voiceGeneration || !voiceEnabled || controller.signal.aborted) return;
+      voiceStatus.textContent = 'Generating Noor’s voice… This may take a few seconds.';
+    }
     const response = await fetch('/api/speak', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },

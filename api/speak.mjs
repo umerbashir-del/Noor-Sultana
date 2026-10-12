@@ -113,20 +113,23 @@ export async function POST(request, context) {
   let predictionId;
   let predictionRunning = false;
   let stage = 'reference';
+  let finishBackground;
+  const background = new Promise((resolve) => { finishBackground = resolve; });
+  context?.waitUntil?.(background);
   try {
     const referenceAudio = await hopeReference();
     if (request.signal.aborted) return new Response(null, { status: 204 });
     stage = 'prediction_create';
     let prediction = await predictionRequest(predictionEndpoint, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', prefer: 'wait=30', 'cancel-after': '45s' },
+      headers: { 'content-type': 'application/json', 'cancel-after': '60s' },
       body: JSON.stringify({ input: { text, reference_audio: referenceAudio } }),
     });
     if (typeof prediction.id === 'string' && /^[a-z0-9]+$/.test(prediction.id)) predictionId = prediction.id;
     predictionRunning = ['starting', 'processing'].includes(prediction.status);
     if (request.signal.aborted) throw new Error('Voice request stopped.');
     stage = 'prediction_wait';
-    for (let attempt = 0; attempt < 6 && !prediction.output && ['starting', 'processing'].includes(prediction.status); attempt += 1) {
+    for (let attempt = 0; attempt < 36 && !prediction.output && ['starting', 'processing'].includes(prediction.status); attempt += 1) {
       if (typeof prediction.id !== 'string' || !/^[a-z0-9]+$/.test(prediction.id)) break;
       await delay(1500, undefined, { signal: request.signal });
       prediction = await predictionRequest(`https://api.replicate.com/v1/predictions/${prediction.id}`, {}, request.signal);
@@ -157,12 +160,13 @@ export async function POST(request, context) {
       if (predictionId && predictionRunning) {
         const cancellation = predictionRequest(`https://api.replicate.com/v1/predictions/${predictionId}/cancel`, { method: 'POST' })
           .catch((cancelError) => { console.error('[Chatterbox] cancellation failed:', cancelError?.message); });
-        context?.waitUntil?.(cancellation);
         await cancellation;
       }
       return new Response(null, { status: 204 });
     }
     console.error('[Chatterbox]', stage, error?.message);
     return json({ error: 'Chatterbox could not speak this reply. Please try again.' }, 502);
+  } finally {
+    finishBackground();
   }
 }

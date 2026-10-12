@@ -80,6 +80,7 @@ test('voice checks session reply and usage before generating Chatterbox audio', 
     }
     if (String(url).endsWith('/models/resemble-ai/chatterbox-turbo/predictions')) {
       assert.equal(options.headers.authorization, 'Bearer test-only-token');
+      assert.equal(options.headers.prefer, undefined);
       const input = JSON.parse(options.body).input;
       assert.equal(input.text, text);
       assert.equal('voice' in input, false);
@@ -151,4 +152,62 @@ test('interrupting speech cancels the active provider prediction', async () => {
   assert.equal(response.status, 204);
   assert.equal(calls.filter((url) => url.endsWith('/predictions/abc123/cancel')).length, 1);
   assert.equal(background.length, 1);
+  await Promise.all(background);
+});
+
+test('interrupting before the provider returns an ID still cancels its prediction', async () => {
+  process.env.NOOR_VOICE_ENABLED = 'true';
+  process.env.REPLICATE_API_TOKEN = 'test-only-token';
+  const controller = new AbortController();
+  const cookie = sessionIdCookie(randomUUID()).split(';')[0];
+  let releaseCreate;
+  let createStarted;
+  const createStartedPromise = new Promise((resolve) => { createStarted = resolve; });
+  const calls = [];
+  const background = [];
+  globalThis.fetch = async (url) => {
+    const destination = String(url);
+    calls.push(destination);
+    if (destination.endsWith('/rpc/noor_reserve_demo_voice')) return Response.json('ok');
+    if (destination.endsWith('/models/resemble-ai/chatterbox-turbo/predictions')) {
+      createStarted();
+      return new Promise((resolve) => { releaseCreate = resolve; });
+    }
+    if (destination.endsWith('/predictions/abc123/cancel')) return Response.json({ status: 'canceled' });
+    throw new Error(`Unexpected destination: ${destination}`);
+  };
+  const pending = POST(request(cookie, 'Welcome aboard.', 'https://noor.example', controller.signal), {
+    waitUntil: (promise) => background.push(promise),
+  });
+  await createStartedPromise;
+  controller.abort();
+  releaseCreate(Response.json({ id: 'abc123', status: 'starting' }));
+  assert.equal((await pending).status, 204);
+  assert.equal(calls.filter((url) => url.endsWith('/predictions/abc123/cancel')).length, 1);
+  assert.equal(background.length, 1);
+  await Promise.all(background);
+});
+
+test('asynchronous voice prediction is polled until audio is ready', async () => {
+  process.env.NOOR_VOICE_ENABLED = 'true';
+  process.env.REPLICATE_API_TOKEN = 'test-only-token';
+  const cookie = sessionIdCookie(randomUUID()).split(';')[0];
+  const wav = new Uint8Array(floatWav([0, 0.5, -0.5]));
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    const destination = String(url);
+    calls.push(destination);
+    if (destination.endsWith('/rpc/noor_reserve_demo_voice')) return Response.json('ok');
+    if (destination.endsWith('/models/resemble-ai/chatterbox-turbo/predictions')) {
+      return Response.json({ id: 'abc123', status: 'starting' });
+    }
+    if (destination.endsWith('/predictions/abc123')) {
+      return Response.json({ id: 'abc123', status: 'succeeded', output: 'https://replicate.delivery/voice.wav' });
+    }
+    if (destination === 'https://replicate.delivery/voice.wav') return new Response(wav);
+    throw new Error(`Unexpected destination: ${destination}`);
+  };
+  const response = await POST(request(cookie, 'Welcome aboard.'));
+  assert.equal(response.status, 200);
+  assert.equal(calls.filter((url) => url.endsWith('/predictions/abc123')).length, 1);
 });
