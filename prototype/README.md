@@ -72,9 +72,11 @@ Each conversation has its own speech job. Chatterbox processes jobs one at a tim
 
 ## Talk to Noor
 
-1. Click **Talk** and allow the browser to use your microphone. Noor requests the browser's echo cancellation, noise suppression, and automatic gain control.
+1. Click **Talk** and allow the browser to use your microphone. If more than one microphone is available, select the intended one below the controls. Noor uses automatic gain control while recording; browser echo cancellation and noise suppression are off so quiet speech is less likely to be removed.
 2. Ask a question, then click **Done**. A local faster-whisper `base.en` model transcribes the recording and puts the words in the message box. Recording also stops after 30 seconds.
 3. Check and edit the transcript, then click **Send** for Noor to answer and speak. Click **Talk** to record again, or **Stop** to discard the transcript, stop playback, or cancel speech generation. You can still type and send a question normally.
+
+If transcription cannot hear you, click **Check recording** to play back the clip locally. The page does not save this playback clip; it is cleared when you record again or end the conversation.
 
 Talk automatically turns Noor's voice on. The microphone is active only between **Talk** and **Done** (or **Stop**). Automatic end-of-turn detection and always-listening are not used in this version.
 

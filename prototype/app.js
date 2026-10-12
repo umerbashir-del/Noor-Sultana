@@ -54,12 +54,16 @@ const talkButton = document.querySelector('#talkButton');
 const doneButton = document.querySelector('#doneButton');
 const stopButton = document.querySelector('#stopButton');
 const micStatus = document.querySelector('#micStatus');
+const micDeviceControls = document.querySelector('#micDeviceControls');
+const micDeviceSelect = document.querySelector('#micDeviceSelect');
+const playRecordingButton = document.querySelector('#playRecordingButton');
 const transcriptReview = document.querySelector('#transcriptReview');
 const vercelPreview = document.documentElement.dataset.vercelPreview === 'true';
 const BrowserSpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 if (vercelPreview) {
   arrivalEmailButton.hidden = true;
+  micDeviceControls.hidden = true;
   voiceToggle.disabled = true;
   voiceStatus.textContent = 'Checking Chatterbox voice…';
   if (!BrowserSpeechRecognition) {
@@ -87,6 +91,8 @@ let transcribeRequest;
 let recorder;
 let browserRecognition;
 let micStream;
+const recordedAudio = new Audio();
+let recordedAudioUrl;
 let discardRecording = false;
 let recordTimeout;
 let micSequence = 0;
@@ -108,6 +114,47 @@ function stopSpeech() {
   if (voiceUrl) URL.revokeObjectURL(voiceUrl);
   voiceUrl = undefined;
   playReplyButton.hidden = true;
+}
+
+function clearRecordingPreview() {
+  recordedAudio.pause();
+  recordedAudio.removeAttribute('src');
+  recordedAudio.load();
+  if (recordedAudioUrl) URL.revokeObjectURL(recordedAudioUrl);
+  recordedAudioUrl = undefined;
+  playRecordingButton.hidden = true;
+}
+
+function keepRecordingPreview(blob) {
+  clearRecordingPreview();
+  recordedAudioUrl = URL.createObjectURL(blob);
+  recordedAudio.src = recordedAudioUrl;
+  playRecordingButton.hidden = false;
+}
+
+playRecordingButton.addEventListener('click', async () => {
+  try {
+    recordedAudio.currentTime = 0;
+    await recordedAudio.play();
+    micStatus.textContent = 'Playing what your microphone recorded…';
+  } catch {
+    micStatus.textContent = 'This browser could not play the recording.';
+  }
+});
+recordedAudio.addEventListener('ended', () => {
+  micStatus.textContent = 'Recording finished. If it was silent, choose another microphone and try Talk again.';
+});
+
+async function listMicrophones(stream) {
+  try {
+    const devices = (await navigator.mediaDevices.enumerateDevices()).filter((device) => device.kind === 'audioinput');
+    const selected = stream.getAudioTracks()[0]?.getSettings().deviceId || micDeviceSelect.value;
+    micDeviceSelect.replaceChildren(new Option('Default microphone', ''));
+    devices.forEach((device, index) => {
+      micDeviceSelect.add(new Option(device.label || `Microphone ${index + 1}`, device.deviceId));
+    });
+    if (devices.some((device) => device.deviceId === selected)) micDeviceSelect.value = selected;
+  } catch { /* Device names may be unavailable in this browser. */ }
 }
 
 async function cancelSynthesis() {
@@ -279,6 +326,7 @@ async function startSession(successMessage = 'Conversation ready. End it to clea
 }
 
 function clearConversationDisplay() {
+  clearRecordingPreview();
   conversation.length = 0;
   pendingUserMessage = undefined;
   input.value = '';
@@ -588,8 +636,6 @@ function finishRecording(discard = false) {
   if (!recorder || recorder.state === 'inactive') return;
   clearTimeout(recordTimeout);
   recorder.stop();
-  micStream?.getTracks().forEach((track) => track.stop());
-  micStream = undefined;
   doneButton.disabled = true;
   talkButton.disabled = true;
 }
@@ -734,8 +780,9 @@ async function sendMessage(message) {
 }
 
 async function transcribeForReview(blob) {
+  keepRecordingPreview(blob);
   if (blob.size < 1000) {
-    micStatus.textContent = 'Recording was too short. Please try again.';
+    micStatus.textContent = 'Recording was too short. Try again, or use Check recording to hear what the microphone captured.';
     talkButton.disabled = !sessionReady;
     return;
   }
@@ -760,7 +807,9 @@ async function transcribeForReview(blob) {
     }
     reviewTranscript(transcript);
   } catch (error) {
-    if (error.name !== 'AbortError') micStatus.textContent = error.message || 'Could not transcribe. Please try again.';
+    if (error.name !== 'AbortError') {
+      micStatus.textContent = `${error.message || 'Could not transcribe.'} Use Check recording; if it is silent, choose another microphone.`;
+    }
     talkButton.disabled = !sessionReady;
   } finally {
     if (transcribeRequest === controller) transcribeRequest = undefined;
@@ -781,6 +830,7 @@ function startBrowserRecognition() {
   if (!BrowserSpeechRecognition) return;
   interruptNoor();
   clearTranscriptReview(true);
+  clearRecordingPreview();
   if (voiceAvailable && !voiceEnabled) setVoiceEnabled(true, false);
   const session = ++micSequence;
   const recognition = new BrowserSpeechRecognition();
@@ -843,19 +893,24 @@ async function startRecording() {
   }
   interruptNoor();
   clearTranscriptReview(true);
+  clearRecordingPreview();
   if (voiceAvailable && !voiceEnabled) setVoiceEnabled(true, false);
   const session = ++micSequence;
   talkButton.disabled = true;
   micStatus.textContent = 'Requesting microphone access…';
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-    });
+    const deviceId = micDeviceSelect.value;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: {
+      ...(deviceId ? { deviceId: { ideal: deviceId } } : {}),
+      echoCancellation: false, noiseSuppression: false, autoGainControl: true,
+    } });
     if (session !== micSequence) {
       stream.getTracks().forEach((track) => track.stop());
       return;
     }
     micStream = stream;
+    micDeviceSelect.disabled = true;
+    void listMicrophones(stream);
     const preferred = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
     const mimeType = preferred.find((type) => MediaRecorder.isTypeSupported(type));
     const activeRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
@@ -867,6 +922,9 @@ async function startRecording() {
     });
     activeRecorder.addEventListener('stop', () => {
       const blob = new Blob(chunks, { type: activeRecorder.mimeType || mimeType || 'audio/webm' });
+      stream.getTracks().forEach((track) => track.stop());
+      if (micStream === stream) micStream = undefined;
+      micDeviceSelect.disabled = false;
       if (recorder === activeRecorder) recorder = undefined;
       if (session !== micSequence) return;
       if (discardRecording) talkButton.disabled = !sessionReady;
@@ -883,6 +941,7 @@ async function startRecording() {
     if (session !== micSequence) return;
     micStream?.getTracks().forEach((track) => track.stop());
     micStream = undefined;
+    micDeviceSelect.disabled = false;
     recorder = undefined;
     talkButton.disabled = !sessionReady;
     doneButton.disabled = true;
@@ -900,6 +959,7 @@ stopButton.addEventListener('click', () => {
   finishRecording(true);
   interruptNoor();
   clearTranscriptReview(true);
+  clearRecordingPreview();
   void cancelSynthesis();
   responseText.textContent = 'Stopped. Ask another question when you’re ready.';
   sourceLine.textContent = 'Stopped';
