@@ -48,12 +48,16 @@ const stopButton = document.querySelector('#stopButton');
 const micStatus = document.querySelector('#micStatus');
 const transcriptReview = document.querySelector('#transcriptReview');
 const vercelPreview = document.documentElement.dataset.vercelPreview === 'true';
+const BrowserSpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 if (vercelPreview) {
   arrivalEmailButton.hidden = true;
-  voiceToggle.closest('.voice-controls').hidden = true;
-  talkButton.closest('.mic-controls').hidden = true;
   voiceToggle.disabled = true;
+  voiceStatus.textContent = 'Checking Chatterbox voice…';
+  if (!BrowserSpeechRecognition) {
+    talkButton.closest('.mic-controls').hidden = true;
+    micStatus.textContent = 'Microphone questions need a browser with speech recognition. You can still type.';
+  }
 }
 
 const conversation = [];
@@ -64,6 +68,7 @@ let idleDeadline = 0;
 let absoluteDeadline = 0;
 const voiceAudio = new Audio();
 let voiceEnabled = false;
+let voiceAvailable = !vercelPreview;
 let voiceRequest;
 let voiceUrl;
 let voiceGeneration = 0;
@@ -72,6 +77,9 @@ let chatSequence = 0;
 let pendingUserMessage;
 let transcribeRequest;
 let recorder;
+let browserRecognition;
+let browserTranscript = '';
+let browserRecognitionError = false;
 let micStream;
 let discardRecording = false;
 let recordTimeout;
@@ -102,6 +110,10 @@ async function cancelSynthesis() {
 async function speakReply(text) {
   stopSpeech();
   if (!voiceEnabled) return;
+  if (vercelPreview && text.length > 500) {
+    voiceStatus.textContent = 'That reply is too long for the demo voice. You can read it above.';
+    return;
+  }
   const generation = voiceGeneration;
   const controller = new AbortController();
   voiceRequest = controller;
@@ -113,7 +125,10 @@ async function speakReply(text) {
       body: JSON.stringify({ text }),
       signal: controller.signal,
     });
-    if (!response.ok) throw new Error('Voice unavailable');
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || 'Voice unavailable');
+    }
     const audio = await response.blob();
     if (generation !== voiceGeneration || !voiceEnabled) return;
     voiceRequest = undefined;
@@ -123,7 +138,7 @@ async function speakReply(text) {
     await voiceAudio.play();
   } catch (error) {
     if (error.name !== 'AbortError' && generation === voiceGeneration) {
-      voiceStatus.textContent = 'Voice unavailable. Check the server window or try again.';
+      voiceStatus.textContent = vercelPreview ? error.message : 'Voice unavailable. Check the server window or try again.';
     }
   } finally {
     if (voiceRequest === controller) voiceRequest = undefined;
@@ -137,6 +152,7 @@ voiceAudio.addEventListener('ended', () => {
 });
 
 function setVoiceEnabled(enabled, replay = true) {
+  if (enabled && !voiceAvailable) return;
   voiceEnabled = enabled;
   voiceToggle.setAttribute('aria-pressed', String(enabled));
   voiceToggle.textContent = enabled ? '🔊 Voice on' : '🔇 Voice off';
@@ -151,6 +167,19 @@ function setVoiceEnabled(enabled, replay = true) {
 }
 
 voiceToggle.addEventListener('click', () => setVoiceEnabled(!voiceEnabled));
+
+async function loadVoiceAvailability() {
+  if (!vercelPreview) return;
+  try {
+    const response = await fetch('/api/speak');
+    const config = await response.json();
+    voiceAvailable = response.ok && config.available === true;
+  } catch { voiceAvailable = false; }
+  voiceToggle.disabled = !voiceAvailable;
+  voiceStatus.textContent = voiceAvailable
+    ? 'Turn on Chatterbox voice to hear Noor’s replies.'
+    : 'Chatterbox voice is not connected yet. You can still talk and read Noor’s replies.';
+}
 
 function setPose(pose) {
   noor.dataset.pose = pose === 'thoughtful' ? 'thinking' : 'welcome';
@@ -174,6 +203,10 @@ function scheduleSessionEnd() {
   sessionTimer = window.setTimeout(() => void endConversation(), Math.max(0, Math.min(idleDeadline, absoluteDeadline) - Date.now()));
 }
 
+function canTalk() {
+  return sessionReady && (!vercelPreview || Boolean(BrowserSpeechRecognition));
+}
+
 async function startSession(successMessage = 'Conversation ready. End it to clear this screen.') {
   sessionReady = false;
   clearTimeout(sessionTimer);
@@ -194,7 +227,7 @@ async function startSession(successMessage = 'Conversation ready. End it to clea
     scheduleSessionEnd();
     input.disabled = false;
     sendButton.disabled = false;
-    talkButton.disabled = vercelPreview || !sessionReady;
+    talkButton.disabled = !canTalk();
     weatherNowButton.disabled = false;
     weatherArrivalButton.disabled = false;
     arrivalEmailButton.disabled = vercelPreview;
@@ -225,7 +258,9 @@ function clearConversationDisplay() {
   setPose('welcome');
   noor.removeAttribute('aria-busy');
   micStatus.textContent = 'Press Talk to ask Noor a question.';
-  voiceStatus.textContent = voiceEnabled ? 'Voice on' : 'Turn on voice to hear Noor’s replies.';
+  voiceStatus.textContent = voiceEnabled ? 'Voice on' : voiceAvailable
+    ? 'Turn on voice to hear Noor’s replies.'
+    : 'Chatterbox voice is not connected yet. You can still talk and read Noor’s replies.';
 }
 
 function clearEmailDraft() {
@@ -488,6 +523,13 @@ function cancelPendingChat() {
 
 function finishRecording(discard = false) {
   if (discard) discardRecording = true;
+  if (browserRecognition) {
+    if (discard) browserRecognition.abort();
+    else browserRecognition.stop();
+    doneButton.disabled = true;
+    talkButton.disabled = true;
+    return;
+  }
   if (!recorder || recorder.state === 'inactive') return;
   clearTimeout(recordTimeout);
   recorder.stop();
@@ -525,7 +567,7 @@ async function sendMessage(message) {
   if (fromTranscript) micStatus.textContent = 'Sending your reviewed question to Noor…';
   clearTranscriptReview();
 
-  if (recorder?.state === 'recording') {
+  if (recorder?.state === 'recording' || browserRecognition) {
     micSequence += 1;
     finishRecording(true);
   }
@@ -617,7 +659,7 @@ async function sendMessage(message) {
       noor.removeAttribute('aria-busy');
       input.disabled = !sessionReady;
       sendButton.disabled = !sessionReady;
-      talkButton.disabled = vercelPreview || !sessionReady;
+      talkButton.disabled = !canTalk();
       weatherNowButton.disabled = !sessionReady;
       weatherArrivalButton.disabled = !sessionReady;
       arrivalEmailButton.disabled = vercelPreview || !sessionReady;
@@ -651,13 +693,7 @@ async function transcribeForReview(blob) {
       micStatus.textContent = 'No speech was recognized. Press Talk to try again, or type your question.';
       return;
     }
-    input.value = transcript;
-    reviewingTranscript = true;
-    transcriptReview.hidden = false;
-    micStatus.textContent = transcript.length > input.maxLength
-      ? 'Transcript is too long. Shorten it before pressing Send.'
-      : 'Transcript ready. Check or edit it, then press Send. Press Talk to record again or Stop to discard it.';
-    input.focus();
+    reviewTranscript(transcript);
   } catch (error) {
     if (error.name !== 'AbortError') micStatus.textContent = error.message || 'Could not transcribe. Please try again.';
     talkButton.disabled = !sessionReady;
@@ -666,15 +702,81 @@ async function transcribeForReview(blob) {
   }
 }
 
+function reviewTranscript(transcript) {
+  input.value = transcript;
+  reviewingTranscript = true;
+  transcriptReview.hidden = false;
+  micStatus.textContent = transcript.length > input.maxLength
+    ? 'Transcript is too long. Shorten it before pressing Send.'
+    : 'Transcript ready. Check or edit it, then press Send. Press Talk to try again or Stop to discard it.';
+  input.focus();
+}
+
+function startBrowserRecognition() {
+  if (!BrowserSpeechRecognition) return;
+  interruptNoor();
+  clearTranscriptReview(true);
+  if (voiceAvailable && !voiceEnabled) setVoiceEnabled(true, false);
+  const session = ++micSequence;
+  const recognition = new BrowserSpeechRecognition();
+  recognition.lang = 'en-US';
+  recognition.continuous = false;
+  recognition.interimResults = true;
+  recognition.maxAlternatives = 1;
+  browserRecognition = recognition;
+  browserTranscript = '';
+  browserRecognitionError = false;
+  discardRecording = false;
+  talkButton.disabled = true;
+  doneButton.disabled = false;
+  micStatus.textContent = 'Requesting microphone access…';
+  recognition.onstart = () => {
+    if (session === micSequence) micStatus.textContent = 'Listening… press Done when you finish.';
+  };
+  recognition.onresult = (event) => {
+    browserTranscript = Array.from(event.results, (result) => result[0]?.transcript || '').join(' ').trim();
+  };
+  recognition.onerror = (event) => {
+    browserRecognitionError = true;
+    if (session === micSequence && !discardRecording) {
+      micStatus.textContent = event.error === 'not-allowed'
+        ? 'Microphone permission was denied. Check browser settings, or type your question.'
+        : 'Speech was not recognized. Press Talk to try again, or type your question.';
+    }
+  };
+  recognition.onend = () => {
+    clearTimeout(recordTimeout);
+    if (browserRecognition === recognition) browserRecognition = undefined;
+    doneButton.disabled = true;
+    talkButton.disabled = !canTalk();
+    if (session !== micSequence || discardRecording || browserRecognitionError) return;
+    if (browserTranscript) reviewTranscript(browserTranscript);
+    else micStatus.textContent = 'No speech was recognized. Press Talk to try again, or type your question.';
+  };
+  try {
+    recognition.start();
+    recordTimeout = window.setTimeout(() => {
+      micStatus.textContent = 'Recording reached 30 seconds. Preparing your transcript…';
+      finishRecording(false);
+    }, 30_000);
+  } catch {
+    browserRecognition = undefined;
+    doneButton.disabled = true;
+    talkButton.disabled = !canTalk();
+    micStatus.textContent = 'Could not start the microphone. You can still type a question.';
+  }
+}
+
 async function startRecording() {
   if (!sessionReady || recorder?.state === 'recording' || talkButton.disabled) return;
+  if (vercelPreview) return startBrowserRecognition();
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
     micStatus.textContent = 'This browser cannot record your microphone. You can still type a question.';
     return;
   }
   interruptNoor();
   clearTranscriptReview(true);
-  if (!voiceEnabled) setVoiceEnabled(true, false);
+  if (voiceAvailable && !voiceEnabled) setVoiceEnabled(true, false);
   const session = ++micSequence;
   talkButton.disabled = true;
   micStatus.textContent = 'Requesting microphone access…';
@@ -787,3 +889,4 @@ flightInfoButton.addEventListener('click', () => {
 });
 
 void startSession();
+void loadVoiceAvailability();
