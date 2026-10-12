@@ -166,6 +166,7 @@ async function listMicrophones(stream) {
 }
 
 async function cancelSynthesis() {
+  if (vercelPreview) return;
   try { await fetch('/api/stop', { method: 'POST' }); } catch { /* Local server may be unavailable. */ }
 }
 

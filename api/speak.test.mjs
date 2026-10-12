@@ -10,11 +10,12 @@ process.env.SUPABASE_SECRET_KEY = 'sb_secret_test_only';
 const originalFetch = globalThis.fetch;
 after(() => { globalThis.fetch = originalFetch; });
 
-function request(cookie, text, origin = 'https://noor.example') {
+function request(cookie, text, origin = 'https://noor.example', signal) {
   return new Request('https://noor.example/api/speak', {
     method: 'POST',
     headers: { origin, cookie, 'content-type': 'application/json' },
     body: JSON.stringify({ text }),
+    signal,
   });
 }
 
@@ -116,4 +117,38 @@ test('voice limit blocks the provider call', async () => {
   const response = await POST(request(sessionIdCookie(randomUUID()).split(';')[0], 'Hello.'));
   assert.equal(response.status, 429);
   assert.equal(calls, 1);
+});
+
+test('interrupting speech cancels the active provider prediction', async () => {
+  process.env.NOOR_VOICE_ENABLED = 'true';
+  process.env.REPLICATE_API_TOKEN = 'test-only-token';
+  const controller = new AbortController();
+  const cookie = sessionIdCookie(randomUUID()).split(';')[0];
+  let releaseCreate;
+  let createStarted;
+  const createStartedPromise = new Promise((resolve) => { createStarted = resolve; });
+  const calls = [];
+  const background = [];
+  globalThis.fetch = async (url) => {
+    const destination = String(url);
+    calls.push(destination);
+    if (destination.endsWith('/rpc/noor_reserve_demo_voice')) return Response.json('ok');
+    if (destination.endsWith('/models/resemble-ai/chatterbox-turbo/predictions')) {
+      createStarted();
+      return new Promise((resolve) => { releaseCreate = resolve; });
+    }
+    if (destination.endsWith('/predictions/abc123/cancel')) return Response.json({ status: 'canceled' });
+    throw new Error(`Unexpected destination: ${destination}`);
+  };
+  const pending = POST(request(cookie, 'Welcome aboard.', 'https://noor.example', controller.signal), {
+    waitUntil: (promise) => background.push(promise),
+  });
+  await createStartedPromise;
+  releaseCreate(Response.json({ id: 'abc123', status: 'processing' }));
+  await new Promise(setImmediate);
+  controller.abort();
+  const response = await pending;
+  assert.equal(response.status, 204);
+  assert.equal(calls.filter((url) => url.endsWith('/predictions/abc123/cancel')).length, 1);
+  assert.equal(background.length, 1);
 });
