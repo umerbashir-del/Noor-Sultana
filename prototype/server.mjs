@@ -273,6 +273,9 @@ async function handleTranscribe(request, response) {
     return sendJson(response, 200, { text });
   } catch (error) {
     console.error(`[Whisper] ${error.message}`);
+    if (error.message === 'No clear speech detected.') {
+      return sendJson(response, 422, { error: 'I couldn’t hear clear speech. Speak for a few seconds, then press Done.' });
+    }
     return sendJson(response, 503, { error: 'I couldn’t transcribe that recording. Please try again or type your question.' });
   }
 }
