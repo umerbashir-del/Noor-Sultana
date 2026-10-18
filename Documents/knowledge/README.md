@@ -2,7 +2,7 @@
 
 **Status:** Draft source material. Noor's local demo may retrieve a matching excerpt for general guidance, but these pages are **not approved airline policy**.
 
-These documents collect common passenger questions for the fictional Cloudline Air demo. They intentionally avoid inventing baggage limits, deadlines, fees, service promises, airport procedures, or legal requirements. The prototype searches them for draft general guidance and labels the source as a draft. Before using a page as airline policy, an airline policy owner should replace its open items with approved wording, add authoritative source links, and record a review date.
+These documents collect common passenger questions for the fictional Noor International Airlines demo. They intentionally avoid inventing baggage limits, deadlines, fees, service promises, airport procedures, or legal requirements. The prototype searches them for draft general guidance and labels the source as a draft. Before using a page as airline policy, an airline policy owner should replace its open items with approved wording, add authoritative source links, and record a review date.
 
 | Document | Covers |
 | --- | --- |

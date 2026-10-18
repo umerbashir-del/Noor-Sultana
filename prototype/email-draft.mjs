@@ -11,6 +11,6 @@ export function arrivalNoteIntent(message) {
 export function createArrivalEmailDraft() {
   return {
     subject: 'Your arrival note — Noor demo',
-    body: `Arrival note for the fictional Cloudline Air CL 204 flight\n\n${fixedArrivalNote}\n\nThis is a demo message. It does not include live flight or airport information.`,
+    body: `Arrival note for the fictional Noor International Airlines CL 204 flight\n\n${fixedArrivalNote}\n\nThis is a demo message. It does not include live flight or airport information.`,
   };
 }

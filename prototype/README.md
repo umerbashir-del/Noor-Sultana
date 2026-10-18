@@ -1,6 +1,6 @@
 # Noor flight assistant demo
 
-This is a small prototype with offline launch safeguards. It uses fictional Cloudline Air CL 204 flight details and sends general passenger chat to Claude. It can check current model weather for a named city or near Tokyo Haneda and JFK through Open-Meteo, but it does not check real flight, airport-operation, or cabin-service data.
+This is a small prototype with offline launch safeguards. The home page offers four fictional sample trips and a filterable destination carousel. The passenger demo is at `/flight-demo.html`; it uses fictional Noor International Airlines CL 204 flight details and sends general passenger chat to Claude. The trip examples have no booking or payment connection. It can check current model weather for a named city or near Tokyo Haneda and JFK through Open-Meteo, but it does not check real flight, airport-operation, or cabin-service data.
 
 Passenger shortcuts include **Boarding time**, **Baggage guidance**, **Weather availability**, and **Arrival note**. The boarding time is fictional, baggage guidance comes from a draft knowledge page, and the fixed arrival note is general demo guidance. These shortcuts appear alongside Tokyo weather, weather elsewhere, and the arrival email draft.
 

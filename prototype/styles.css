@@ -17,7 +17,7 @@ button { color: inherit; }
 .experience { min-height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
 .topbar { position: relative; z-index: 5; height: 54px; flex: 0 0 54px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 clamp(16px, 4vw, 48px); background: #111b2b; }
-.brand { color: var(--gold); font-family: Georgia, serif; font-size: 20px; }
+.brand { color: var(--gold); font-family: Georgia, serif; font-size: 20px; text-decoration: none; }
 .flight-route { color: #e2e5ea; font-size: 12px; }
 .info-button { padding: 7px 11px; border: 1px solid var(--line); border-radius: 7px; background: transparent; cursor: pointer; font-size: 11px; }
 .info-button:hover, .info-button[aria-expanded="true"] { border-color: var(--gold); color: var(--gold); }

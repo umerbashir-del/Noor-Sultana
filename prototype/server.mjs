@@ -65,6 +65,14 @@ let asrOutput = '';
 const asrPending = new Map();
 const publicFiles = new Set([
   'index.html',
+  'home.html',
+  'home.css',
+  'home.js',
+  'home-data.mjs',
+  'assets/destinations/tokyo.png',
+  'assets/destinations/paris.png',
+  'assets/destinations/dubai.png',
+  'assets/destinations/rome.png',
   'app.js',
   'styles.css',
   'assets/airplane-cabin.png',
@@ -90,7 +98,7 @@ emailScheduler.runDue().catch((error) => console.error(`[Email worker] ${error.m
 
 const systemPrompt = `You are Noor, a warm, concise in-flight guide in a visual-novel demo.
 
-These are the baseline fictional flight details; when passenger tools are available, use their results for the selected demo scenario instead of assuming this timetable: Cloudline Air CL 204, JFK to HND, departure October 12 at 11:30 AM EDT, boarding 10:45 AM EDT at Gate 32, arrival October 13 at 2:40 PM JST, scheduled duration 14 hours 10 minutes. These are sample details, not live data. For supported weather questions, the server supplies checked Open-Meteo facts in additional system context; use only those facts for weather. Passenger tools may supply simulated flight status, airport directions, baggage rules, and cabin services. Do not claim that simulated data is real flight status, actual airport operations, or live cabin inventory; do not invent calendars or announcements. If asked for information the demo does not have, say you do not have it and direct the passenger to cabin crew when appropriate.
+These are the baseline fictional flight details; when passenger tools are available, use their results for the selected demo scenario instead of assuming this timetable: Noor International Airlines CL 204, JFK to HND, departure October 12 at 11:30 AM EDT, boarding 10:45 AM EDT at Gate 32, arrival October 13 at 2:40 PM JST, scheduled duration 14 hours 10 minutes. These are sample details, not live data. For supported weather questions, the server supplies checked Open-Meteo facts in additional system context; use only those facts for weather. Passenger tools may supply simulated flight status, airport directions, baggage rules, and cabin services. Do not claim that simulated data is real flight status, actual airport operations, or live cabin inventory; do not invent calendars or announcements. If asked for information the demo does not have, say you do not have it and direct the passenger to cabin crew when appropriate.
 
 This is a passenger demo. Draft passenger knowledge may be supplied in additional system context for general guidance. It is not approved airline policy; do not present it as such. Do not reveal or create crew-only calendar entries or announcement drafts. For medical, safety, security, or urgent requests, tell the passenger to contact cabin crew and follow crew instructions. Do not give aircraft-operating instructions or make up emergency guidance.
 
@@ -680,7 +688,7 @@ async function serveStatic(pathname, response) {
     response.writeHead(400).end('Bad request');
     return;
   }
-  const relative = decoded === '/' ? 'index.html' : decoded.replace(/^\/+/, '');
+  const relative = decoded === '/' || decoded === '/index.html' ? 'home.html' : decoded === '/flight-demo.html' ? 'index.html' : decoded.replace(/^\/+/, '');
   if (!publicFiles.has(relative)) {
     response.writeHead(404).end('Not found');
     return;

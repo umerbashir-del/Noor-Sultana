@@ -6,7 +6,7 @@ test('arrival email uses the fixed note and does not accept user-written content
   const draft = createArrivalEmailDraft();
   assert.ok(draft.body.includes(fixedArrivalNote));
   assert.match(draft.subject, /demo/i);
-  assert.match(draft.body, /fictional Cloudline Air CL 204/);
+  assert.match(draft.body, /fictional Noor International Airlines CL 204/);
   assert.match(draft.body, /does not include live flight or airport information/i);
   assert.deepEqual(Object.keys(draft), ['subject', 'body']);
   assert.equal(createArrivalEmailDraft().body, draft.body);

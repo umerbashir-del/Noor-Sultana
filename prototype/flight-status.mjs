@@ -13,7 +13,7 @@ export function flightStatusReply(message, scenario) {
   // Only fictional CL 204 belongs to these fixtures.
   const identifiers = [...message.toUpperCase().matchAll(/\b([A-Z]{2,3})\s?(\d{1,4})\b/g)];
   if (identifiers.some(([, airline, number]) => airline !== 'CL' || number !== '204')) {
-    return { ...base, reply: 'This simulated status tool covers only fictional Cloudline Air CL 204, JFK to Haneda. I cannot verify the status of that other flight.' };
+    return { ...base, reply: 'This simulated status tool covers only fictional Noor International Airlines CL 204, JFK to Haneda. I cannot verify the status of that other flight.' };
   }
   const replies = {
     'on-time': 'Demo scenario: On time. Fictional CL 204 boards October 12, 2026 at 10:45 AM EDT at Gate 32, departs at 11:30 AM EDT, and is estimated to arrive October 13 at 2:40 PM JST. These are simulated times, not live flight status.',

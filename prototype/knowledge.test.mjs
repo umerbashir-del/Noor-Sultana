@@ -21,7 +21,7 @@ test('routes representative passenger questions to all seven draft pages', async
     assert.equal(result.source.status, 'Draft guidance');
     assert.equal(result.source.review, 'Not yet reviewed');
     assert.equal(result.source.url, `/knowledge/${id}.md`);
-    assert.match(knowledgeSystemContext(result), /not verified Cloudline Air policy/i);
+    assert.match(knowledgeSystemContext(result), /not verified Noor International Airlines policy/i);
   }
 });
 

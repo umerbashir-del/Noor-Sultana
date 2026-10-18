@@ -11,7 +11,7 @@ export function baggageAllowanceIntent(message) {
     && /\b(allowance|allow(?:ed)?|include[ds]?|ticket|fare|checked|carry[ -]?on|size|weight|weigh|heavy|limit|many|much|cost|fees?|pay|extra|personal item|bring)\b/i.test(message);
 }
 export function baggageAllowanceReply(message, fare = 'standard') {
-  const base = { expression: 'thoughtful', sourceLabel: 'Demo baggage policy v1 · Fictional Cloudline Air · Not real airline policy' };
+  const base = { expression: 'thoughtful', sourceLabel: 'Demo baggage policy v1 · Fictional Noor International Airlines · Not real airline policy' };
   const flights = [...message.toUpperCase().matchAll(/\b([A-Z]{2,3})\s?(\d{1,4})\b/g)];
   if (flights.some(([, airline, number]) => airline !== 'CL' || number !== '204')
       || /\b(connection|connecting|transfer|other airline)\b/i.test(message)) {
