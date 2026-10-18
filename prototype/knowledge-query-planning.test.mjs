@@ -50,3 +50,19 @@ test('explicit connection questions still offer the connection tool',async()=>{
  }});
  assert.equal(calls,2);
 });
+
+
+test('charger and unwell retrieval covers both topics without allowance or carousel filler',async()=>{
+ const message='Can I put my portable charger in my checked bag, and what should I do if I feel unwell on the flight?';
+ const {requiredEvidence}=await import('./evidence.mjs');
+ const {updateSessionMemory}=await import('./session-memory.mjs');
+ assert.deepEqual(requiredEvidence(message),[]);
+ assert.deepEqual(requiredEvidence(message+' Also how many checked bags are included?'),['baggage_allowance']);
+ const knowledge=await findKnowledge(planGuidanceQuery(message,requiredEvidence(message)));
+ assert.deepEqual(knowledge.sources.map(s=>s.citationId),['baggage:2','on-board:4']);
+ const memory=updateSessionMemory(null,message,knowledge.sources);
+ assert.deepEqual(memory.documents.map(s=>s.id),['baggage','on-board']);
+ let executions=0,rounds=0;
+ const result=await answerWithTools({apiKey:'offline',model:'test',system:'scope',messages:[{role:'user',content:message}],execute:async(...args)=>{executions++;assert.equal(args[0],'passenger_guidance');return executePassengerTool(...args);},callModel:async()=>++rounds===1?{content:[request('both','charger guidance')]}:text('Check airline restrictions and alert cabin crew promptly.')});
+ assert.equal(executions,1);assert.deepEqual(result.knowledgeSources.map(s=>s.citationId),['baggage:2','on-board:4']);assert.match(result.reply,/cabin crew/);
+});

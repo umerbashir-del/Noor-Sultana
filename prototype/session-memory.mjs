@@ -1,6 +1,6 @@
 import { cleanGuidanceReferences, guidanceReferencesForQuestion, planGuidanceQuery } from './knowledge.mjs';
 import { requiredEvidence } from './evidence.mjs';
-import { parseFlightId, isFollowUp } from './conversation-context.mjs';
+import { sessionFlightId, isFollowUp } from './conversation-context.mjs';
 import { reminderIntent } from './reminders.mjs';
 const topics=new Set(['flight_status','baggage_allowance','meals_and_services','connection_assistant','airport_guide','prepare_reminder','prepare_crew_request','translate_travel_phrase','weather','arrival_note','prepare_arrival_email','passenger_guidance']);
 export function cleanSessionMemory(value) {
@@ -10,7 +10,7 @@ export function cleanSessionMemory(value) {
  if(['vegetarian','vegan'].includes(value?.preferences?.dietary))preferences.dietary=value.preferences.dietary;
  const flight=value?.flightId;
  const documents=cleanGuidanceReferences(value?.documents);
- return {...(documents.length?{documents}:{}),version:1,topics:Array.isArray(value?.topics)?[...new Set(value.topics.filter(t=>topics.has(t)))].slice(0,3):[],flightId:typeof flight==='string'&&/^[A-Z]{2,3}[0-9]{1,4}$/.test(flight)?flight:'CL204',preferences};
+ return {...(documents.length?{documents}:{}),version:1,topics:Array.isArray(value?.topics)?[...new Set(value.topics.filter(t=>topics.has(t)))].slice(0,3):[],flightId:typeof flight==='string'&&/^[A-Z]{2,3}[0-9]{1,4}$/.test(flight)&&flight!=='FR24'?flight:'CL204',preferences};
 }
 export function updateSessionMemory(previous,message,sources=[]) {
  const memory=cleanSessionMemory(previous);
@@ -38,7 +38,7 @@ export function updateSessionMemory(previous,message,sources=[]) {
  if(diet)memory.preferences.dietary=diet[1].toLowerCase();
  const revokedDiet=message.match(/\bI am (?:not|no longer) (vegetarian|vegan)\b/i);
  if(revokedDiet&&memory.preferences.dietary===revokedDiet[1].toLowerCase())delete memory.preferences.dietary;
- const explicitFlight=parseFlightId(message);if(explicitFlight)memory.flightId=explicitFlight;
+ const explicitFlight=sessionFlightId(message);if(explicitFlight)memory.flightId=explicitFlight;
  if(direct.length){memory.topics=[...new Set(direct)].slice(0,3);if(!documentReferences.length)delete memory.documents;}
  else if(!isFollowUp(message)&&!language&&!brief&&!detailed&&!diet&&!/^(?:thanks|thank you|ok|okay|hello|hi|great|got it)[.!\s]*$/i.test(message.trim())){memory.topics=[];delete memory.documents;}
  const retrieved=cleanGuidanceReferences((Array.isArray(sources)?sources:[]).map(source=>({id:source?.id,section:source?.section})));

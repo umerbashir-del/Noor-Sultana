@@ -28,7 +28,7 @@ const topics = [
   ['on-board', 'Can I change my seat?', /\b(change.*seat|switch.*seat|move.*seat|seat change)\b/i],
   ['on-board', 'What food or drinks are available?', /\b(food|drink|meal|menu|snack|allerg(?:y|ies|en))\b/i],
   ['on-board', 'Is Wi-Fi or entertainment available?', /\b(wi[ -]?fi|internet|entertainment|movies?|streaming)\b/i],
-  ['on-board', 'Can you help with a cabin issue?', /\b(cabin issue|broken seat|onboard problem|on-board problem)\b/i],
+  ['on-board', 'Can you help with a cabin issue?', /\b(cabin issue|broken seat|onboard problem|on-board problem|unwell|feel(?:ing)? sick|medical concern|distress)\b/i],
   ['changes-and-disruptions', 'Is my flight delayed or cancelled?', /\b(flight.*(?:delay(?:ed|s)?|cancel(?:led|ed|s)?)|delay(?:ed)? flight|cancelled flight|canceled flight|flight status)\b/i],
   ['changes-and-disruptions', 'What happens if I miss a connection?', /\b(miss(?:ed|ing)? (?:my |a )?connection|miss(?:ed|ing)? (?:my |a )?connecting flight)\b/i],
   ['changes-and-disruptions', 'Can I change or cancel my trip?', /\b(change.*(trip|flight|booking)|cancel.*(trip|flight|booking)|rebook)\b/i],
@@ -44,6 +44,7 @@ const topics = [
 ];
 
 export function knowledgeRoute(message) {
+  if(/\b(unwell|feel(?:ing)? sick|medical concern|distress)\b/i.test(message))return {id:'on-board',question:'Can you help with a cabin issue?'};
   if(/\b(portable chargers?|power[ -]?banks?|batter(?:y|ies))\b/i.test(message))return {id:'baggage',question:'Can I bring this item?'};
   // Specific routes must win over broader words such as "connection" or "meal".
   const specific = [17, 6, 7, 25, 27, 24, 23, 22];
@@ -95,6 +96,7 @@ export async function findKnowledge(message) {
  const corpus=(await Promise.all(Object.keys(documents).map(async id=>parseKnowledgeDocument(id,await readKnowledgeDocument(id))))).flat();
  const routedMessage=message+' '+query.join(' ');
  const route=knowledgeRoute(routedMessage);
+ const coverage=guidanceRoutes(message);
  const matchingRoutes=topics.filter(([, ,pattern])=>pattern.test(routedMessage));
  const candidates=corpus.map(passage=>{
   const heading=knowledgeTerms(passage.question),body=knowledgeTerms(passage.excerpt);
@@ -109,7 +111,9 @@ export async function findKnowledge(message) {
   return {passage,score,eligible:primary||routed||hits.length>=2&&hits.some(term=>heading.includes(term))};
  }).filter(candidate=>candidate.eligible&&candidate.score>=3).sort((a,b)=>b.score-a.score||a.passage.source.citationId.localeCompare(b.passage.source.citationId));
  const best=candidates[0];if(!best)return null;
- const passages=candidates.filter(candidate=>candidate.score>=Math.max(3,best.score*0.45)).slice(0,3).map(candidate=>candidate.passage);
+ const selected=coverage.map(ref=>corpus.find(p=>p.source.id===ref.id&&p.question===ref.section)).filter(Boolean);
+ // Cover distinct requested topics before adding lower-ranked passages.
+ const passages=selected.length?selected.slice(0,3):candidates.filter(candidate=>candidate.score>=Math.max(3,best.score*0.45)).slice(0,3).map(candidate=>candidate.passage);
  const first=passages[0];
  return {...first,passages,sources:passages.map(p=>p.source),retrieval:{method:'section-text-search',passageCount:passages.length}};
 }
@@ -123,7 +127,7 @@ export function planGuidanceQuery(message,protectedTools=[]) {
  if(typeof message!=='string'||/^(?:and now|what about now|and how many|how many|is it still available)[?!.\s]*$/i.test(message.trim()))return null;
  const clauses=message.split(/\b(?:and|also|plus)\b|[?;]/i).map(part=>part.trim()).filter(Boolean);
  const retained=clauses.filter(clause=>{
-  const documentary=/\b(portable charger|power[ -]?bank|batter(?:y|ies)|restricted|liquid|medication|medicine|medical device|passport|visa|travel documents?|check[ -]?in|wheelchair|step[ -]free|accessibility|damaged|broken|lost|missing|never arrived|report|refund|compensation|rebook|pet|service animal)\b/i.test(clause);
+  const documentary=/\b(portable chargers?|chargers?|power[ -]?banks?|unwell|feel(?:ing)? sick|medical concern|distress|batter(?:y|ies)|restricted|liquid|medication|medicine|medical device|passport|visa|travel documents?|check[ -]?in|wheelchair|step[ -]free|accessibility|damaged|broken|lost|missing|never arrived|report|refund|compensation|rebook|pet|service animal)\b/i.test(clause);
   if(documentary)return true;
   if(protectedTools.includes('flight_status')&&/\b(delayed?|late|landed|status|boarding|departure|arrival)\b/i.test(clause))return false;
   if(protectedTools.includes('baggage_allowance')&&/\b(allowance|included|checked bags?|carry[ -]?on)\b/i.test(clause))return false;
@@ -143,7 +147,9 @@ export function cleanGuidanceReferences(references) {
 export function guidanceReferencesForQuestion(message) {
  if(!message)return [];
  const expanded=message+' '+knowledgeTerms(message).join(' '),primary=knowledgeRoute(expanded);
- const refs=primary?[{id:primary.id,section:primary.question}]:[];
+ const coverage=guidanceRoutes(message);
+ const refs=coverage.length?coverage:primary?[{id:primary.id,section:primary.question}]:[];
+ if(coverage.length)return cleanGuidanceReferences(refs);
  for(const [id,section,pattern]of topics)if(pattern.test(expanded))refs.push({id,section});
  return cleanGuidanceReferences(refs);
 }
@@ -156,4 +162,9 @@ export async function findKnowledgeByReferences(references,{readDocument=readKno
  }
  if(!passages.length)return null;
  return {...passages[0],passages,sources:passages.map(p=>p.source),retrieval:{method:'session-topic-references',passageCount:passages.length}};
+}
+
+function guidanceRoutes(message) {
+ const clauses=message.split(/\b(?:and|also|plus)\b|[?;]/i).map(s=>s.trim()).filter(Boolean);
+ return [...new Map(clauses.map(clause=>knowledgeRoute(clause+' '+knowledgeTerms(clause).join(' '))).filter(Boolean).map(ref=>[ref.id+'|'+ref.question,{id:ref.id,section:ref.question}])).values()].slice(0,3);
 }

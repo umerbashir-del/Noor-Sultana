@@ -77,3 +77,27 @@ test('explicit preference corrections replace or remove older values',()=>{
  memory=updateSessionMemory(memory,"Do not reply in Spanish.");assert.equal(memory.preferences.language,'english');
  memory=updateSessionMemory(memory,'Do not reply in English. I am no longer vegetarian.');assert.equal(memory.preferences.language,undefined);assert.equal(memory.preferences.dietary,undefined);
 });
+
+
+test('onward connections and FR24 never replace the inbound flight in memory',()=>{
+ let memory=updateSessionMemory(null,'What is the status of NH110?');
+ memory=updateSessionMemory(memory,'Will I make my CL310 connection after this delay?');
+ assert.equal(memory.flightId,'NH110');
+ memory=updateSessionMemory(memory,'Show the FR24 sandbox aircraft position.');
+ assert.equal(memory.flightId,'NH110');
+ assert.equal(cleanSessionMemory({flightId:'FR24'}).flightId,'CL204');
+ memory=updateSessionMemory(memory,'Our inbound flight CL204 connects to CL310.');
+ assert.equal(memory.flightId,'CL204');
+ assert.equal(updateSessionMemory(memory,'What is the status of CL310?').flightId,'CL310');
+});
+
+test('vague inbound status after an onward connection uses fresh CL204 evidence',async()=>{
+ let memory=updateSessionMemory(null,'Will I make my CL310 connection after the delay?');
+ for(let i=0;i<8;i++)memory=updateSessionMemory(memory,'Thanks');
+ let rounds=0;
+ const answer=await answerWithTools({apiKey:'offline',model:'test',system:'scope',messages:[{role:'user',content:'Have we landed?'}],context:{sessionMemory:memory,demoScenario:'landed'},callModel:async args=>{
+  assert.match(args.system,/"flightId":"CL204"/);
+  return ++rounds===1?{content:[{type:'tool_use',id:'status',name:'flight_status',input:{flightId:'CL204'}}]}:text('We have landed.');
+ }});
+ assert.equal(answer.evidenceStatus,'grounded');assert.match(answer.reply,/Landed/);
+});

@@ -13,7 +13,8 @@ export function requiredEvidence(message,history=[]) {
  const weatherOnly=/\b(weather|forecast|temperature)\b/i.test(message)&&!/\bflight status\b/i.test(message);
  if(statusParaphrase&&!connection&&!weatherOnly)needed.push('flight_status');
  if(!weatherOnly&&(!connection||/\bflight status\b/i.test(message))&&/\b(flight status|delay(?:ed)?|on[ -]time|on schedule|landed|touched down|boarding|departure|arrival time)\b|\bwhen\b.*\b(board|depart|arriv|land)\w*\b|\b(leaving|leave)\b.*\b(schedule|time)\b/i.test(message))needed.push('flight_status');
- if(/\b(baggage|luggage|bags?|suitcases?|carry[ -]?on)\b/i.test(message)&&/\b(allowance|include[ds]?|ticket|fare|checked|carry[ -]?on|size|weight|weigh|heavy|limit|many|much|fee|bring|take)\b/i.test(message)&&!/\b(claim|carousel|missing|lost|damaged|collect)\b/i.test(message))needed.push('baggage_allowance');
+ const baggageQuestion=message.split(/\b(?:and|also|plus)\b|[?;]/i).filter(clause=>!/\b(chargers?|power[ -]?banks?|batter(?:y|ies)|liquids?|restricted items?)\b/i.test(clause)).join(' and ');
+ if(/\b(baggage|luggage|bags?|suitcases?|carry[ -]?on)\b/i.test(baggageQuestion)&&/\b(allowance|include[ds]?|ticket|fare|checked|carry[ -]?on|size|weight|weigh|heavy|limit|many|much|fee|bring|take)\b/i.test(baggageQuestion)&&!/\b(claim|carousel|missing|lost|damaged|collect)\b/i.test(baggageQuestion))needed.push('baggage_allowance');
  if(/\b(meals?|menu|vegetarian|vegan|halal|kosher|allerg\w*|drinks?|snacks?|wi[ -]?fi|internet|food|coffee|tea|water|blankets?|pillows?)\b/i.test(message)&&!/\b(bring|request|get me|could i have|can i have)\b/i.test(message))needed.push('meals_and_services');
  if(!needed.length&&isFollowUp(message)){
   const previous=priorUserTurns(message,history);
