@@ -46,7 +46,9 @@ export function crewAction(session, input, now = Date.now()) {
  if (input.action === 'cancel') {
   const request = state.requests.find((r) => r.id === input.id);
   if (!request) throw new CrewError('Request not found in this conversation.', 404);
+  if (request.status === 'completed') throw new CrewError('This demo request is already completed.', 409);
   request.status = 'cancelled';
+  request.updatedAt = now;
   return { request: publicRequest(request) };
  }
  throw new CrewError('Unsupported crew action.');

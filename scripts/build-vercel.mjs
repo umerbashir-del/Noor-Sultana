@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const output = resolve(root, 'public');
 await mkdir(output, { recursive: true });
-for (const file of ['app.js', 'styles.css']) {
+for (const file of ['app.js', 'styles.css', 'crew-dashboard.html', 'crew-dashboard.css', 'crew-dashboard.js']) {
   await cp(resolve(root, 'prototype', file), resolve(output, file));
 }
 await cp(resolve(root, 'prototype/assets'), resolve(output, 'assets'), { recursive: true });

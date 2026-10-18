@@ -1208,8 +1208,12 @@ flightInfoButton.addEventListener('click', () => {
 let crewDraftToken = null;
 let crewBusy = false;
 let crewViewGeneration = 0;
+let crewRefreshTimer;
+let crewHasActiveRequests = false;
 function clearCrewDemo() {
  crewViewGeneration += 1;
+ clearTimeout(crewRefreshTimer);
+ crewHasActiveRequests = false;
  crewDraftToken = null;
  document.querySelector('#crewPanel').open = false;
  document.querySelector('#crewDetails').value = '';
@@ -1224,14 +1228,15 @@ async function crewApi(payload) {
  return result;
 }
 function renderCrewRequests(requests) {
+ crewHasActiveRequests = requests.some(r => ['submitted','acknowledged','in_progress'].includes(r.status));
  const list = document.querySelector('#crewRequests');
  list.replaceChildren();
  for (const request of requests) {
   const item = document.createElement('li');
   const label = document.createElement('span');
-  label.textContent = `Seat ${request.seat} · ${request.category} · ${request.details} · ${request.status} (demo only)`;
+  label.textContent = `Seat ${request.seat} · ${request.category} · ${request.details} · ${request.status.replaceAll('_',' ')} (demo only)`;
   item.append(label);
-  if (request.status === 'submitted') {
+  if (['submitted','acknowledged','in_progress'].includes(request.status)) {
    const cancel = document.createElement('button');
    cancel.type = 'button';
    cancel.textContent = 'Cancel request';
@@ -1266,6 +1271,8 @@ async function runCrewAction(action) {
  } finally {
   crewBusy = false;
   buttons.forEach((b) => { b.disabled = false; });
+  clearTimeout(crewRefreshTimer);
+  if (sessionReady && crewHasActiveRequests && generation === crewViewGeneration) crewRefreshTimer = setTimeout(() => void runCrewAction(async () => ''), 10000);
  }
 }
 document.querySelector('#crewReviewButton').addEventListener('click', () => runCrewAction(async (generation) => {

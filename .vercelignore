@@ -20,3 +20,5 @@ scripts/inspect-agent-traces.mjs
 /Documents/README.md
 
 scripts/check-hosted-actions.sql
+
+scripts/check-crew-dashboard.sql
