@@ -71,12 +71,12 @@ export async function executePassengerTool(name,input,context={}) {
  }
  case 'prepare_crew_request':{
   const original=context.originalMessage||input.details;
-  const data=crewReply(original,context.local!==false);
+  const data=crewReply(original,context.local!==false||context.hostedActions===true);
   const enabled=Boolean(data.crewAssistance);
   return result({...data,status:enabled?'needs_confirmation':urgentCrew(original)?'unsupported':'unavailable',facts:{seat:'12A',category:input.category,details:input.details,submitted:false},confirmationRequired:enabled,...(enabled?{crewProposal:{seat:'12A',category:input.category,details:input.details}}:{}),limitations:['No real crew contacted. Passenger must review and confirm.']});
  }
  case 'prepare_reminder':{
-  const data=reminderReply(context.local!==false),enabled=Boolean(data.passengerReminders);
+  const data=reminderReply(context.local!==false||context.hostedActions===true),enabled=Boolean(data.passengerReminders);
   return result({...data,status:enabled?'needs_confirmation':'unavailable',facts:{kind:input.kind,delayMinutes:input.delayMinutes??null,saved:false},confirmationRequired:enabled,...(enabled?{reminderProposal:{kind:input.kind,delayMinutes:input.delayMinutes??null}}:{}),limitations:['Manual in-app reminder only; page/session must remain active.']});
  }
  case 'translate_travel_phrase':{

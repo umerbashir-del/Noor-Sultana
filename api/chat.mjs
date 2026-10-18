@@ -63,7 +63,7 @@ export async function POST(request) {
       const answer = await answerWithTools({
         apiKey: process.env.ANTHROPIC_API_KEY, model, system: systemPrompt,
         messages: [...session.messages, { role: 'user', content: message }],
-        context: { ...agentBody, originalMessage: message, local: false, sessionMemory: session.memory },
+        context: { ...agentBody, originalMessage: message, local: false, hostedActions: true, sessionMemory: session.memory },
         callModel: args => runHostedClaude(args,session.id),
       });
       return finish(session, message, answer);

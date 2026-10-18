@@ -21,3 +21,7 @@ Passenger shortcuts include the fictional boarding time, draft baggage guidance,
 The Vercel preview still cannot schedule email. Vercel functions do not keep the local Python workers or SQLite email scheduler running between requests. Do not present the fixed email note as sent or scheduled.
 
 Run `npm run build` and `npm run test:vercel` from the repository root to check the Vercel build and API flow locally. The generated `public/` directory is ignored by Git.
+
+Hosted demo crew requests and passenger reminders use the existing confirmation forms. Apply `supabase/migrations/20261018062000_noor_hosted_actions.sql` before deploying this support. Supabase stores action drafts and confirmed items in the current session, using versioned writes to prevent overwrites. Only the server role can access these functions. Ended or expired conversations cannot read or change their actions. Review tokens expire after five minutes (or the reminder due time), and repeated confirmations return the same saved item. Each session permits up to ten crew requests and ten reminders. These actions do not call Claude or change its usage ledger or caps.
+
+Crew submissions are simulated records, not dispatches or notifications to actual crew. Reminders are manual in-page alerts: keep the page and conversation active; idle and absolute session expiry still apply. There is no email, SMS, push, background scheduling guarantee, or adjustment for flight changes. Refreshing the reminder list checks current server time; hosted function restarts do not erase session records.

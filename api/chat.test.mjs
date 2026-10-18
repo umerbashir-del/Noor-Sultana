@@ -40,7 +40,7 @@ test('hosted final answers block unsupported completion claims with or without t
 test('hosted action tools only report preparation availability and never submit',async()=>{
  const cookie=cookieOf(await start(request('/api/session')));let calls=0;
  modelFetch=async url=>{assert.equal(url,'https://api.anthropic.com/v1/messages');return ++calls===1?response([{type:'tool_use',id:'crew',name:'prepare_crew_request',input:{category:'seat',details:'Seat assistance'}}]):final('I submitted the request.');};
- const r=await chat(request('/api/chat',cookie,{message:'Could someone help with my seat?',useTools:false}));assert.equal(r.status,200);const result=await r.json();assert.equal(result.crewAssistance,false);assert.match(result.reply,/local demo only/);assert.ok(!result.reply.includes('I submitted'));
+ const r=await chat(request('/api/chat',cookie,{message:'Could someone help with my seat?',useTools:false}));assert.equal(r.status,200);const result=await r.json();assert.equal(result.crewAssistance,true);assert.match(result.reply,/nothing has been submitted/i);assert.ok(!result.reply.includes('I submitted'));
 });
 
 test('hosted weather uses the tool result rather than a direct legacy model path',async()=>{

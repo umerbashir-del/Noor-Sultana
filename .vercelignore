@@ -18,3 +18,5 @@ scripts/inspect-agent-traces.mjs
 /Documents/evidence
 /Documents/PRD-SUMMARY.md
 /Documents/README.md
+
+scripts/check-hosted-actions.sql

@@ -1,5 +1,3 @@
-import { json, sameOrigin } from '../lib/vercel-shared.mjs';
-export async function POST(request) {
- if (!sameOrigin(request)) return json({ error: 'Request origin is not allowed.' }, 403);
- return json({ error: 'Reminders are available in the local demo only. Nothing scheduled.' }, 503);
-}
+import {hostedActionHandler} from '../lib/hosted-actions.mjs';
+import {reminderAction} from '../prototype/reminders.mjs';
+export const POST=hostedActionHandler(reminderAction);

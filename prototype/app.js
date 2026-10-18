@@ -1204,7 +1204,7 @@ flightInfoButton.addEventListener('click', () => {
 });
 
 
-/* Demo crew requests are scoped to the current local server session. */
+/* Demo crew requests are scoped to the current conversation. */
 let crewDraftToken = null;
 let crewBusy = false;
 let crewViewGeneration = 0;
@@ -1214,7 +1214,7 @@ function clearCrewDemo() {
  document.querySelector('#crewPanel').open = false;
  document.querySelector('#crewDetails').value = '';
  document.querySelector('#crewRequests').replaceChildren();
- document.querySelector('#crewStatus').textContent = 'No real crew contacted. Requests expire with this conversation or a server restart.';
+ document.querySelector('#crewStatus').textContent = 'No real crew contacted. Requests expire with this conversation.';
  document.querySelector('#crewReviewDialog').close();
 }
 async function crewApi(payload) {
@@ -1246,10 +1246,6 @@ function renderCrewRequests(requests) {
 }
 async function runCrewAction(action) {
  if (crewBusy) return;
- if (vercelPreview) {
-  document.querySelector('#crewStatus').textContent = 'Crew requests are available in the local demo only.';
-  return;
- }
  if (!sessionReady) {
   document.querySelector('#crewStatus').textContent = 'Start a conversation before using demo crew requests.';
   return;
@@ -1356,8 +1352,8 @@ function renderReminders(items) {
 }
 async function runReminderAction(action) {
  if (reminderBusy) return;
- if (vercelPreview || !sessionReady) {
-  document.querySelector('#reminderStatus').textContent = vercelPreview ? 'Reminders are available in the local demo only.' : 'Start a conversation first.';
+ if (!sessionReady) {
+  document.querySelector('#reminderStatus').textContent = 'Start a conversation first.';
   return;
  }
  reminderBusy = true;
@@ -1385,7 +1381,7 @@ document.querySelector('#reminderReviewButton').addEventListener('click', () => 
  const data = await reminderApi({ action: 'review', kind: document.querySelector('#reminderKind').value, dueAt: Date.now() + minutes * 60_000, timeZone: document.querySelector('#reminderTimeZone').value });
  if (generation !== reminderGeneration) return;
  reminderToken = data.draft.token;
- document.querySelector('#reminderReviewText').textContent = data.draft.message + '\n' + reminderTime(data.draft) + '\nUTC: ' + new Date(data.draft.dueAt).toISOString() + '\n\nIn-app demo only. Closing the page, ending the conversation, or restarting the server prevents delivery. No automatic changes for flight delays.';
+ document.querySelector('#reminderReviewText').textContent = data.draft.message + '\n' + reminderTime(data.draft) + '\nUTC: ' + new Date(data.draft.dueAt).toISOString() + '\n\nIn-app demo only. Closing the page, ending the conversation, or letting the conversation expire prevents delivery. No automatic changes for flight delays.';
  document.querySelector('#reminderReviewDialog').showModal();
  return 'Review the message and time, then confirm saving.';
 }));

@@ -13,7 +13,7 @@ export function reminderIntent(message) {
 export function reminderReply(available = true) {
  return { expression: 'thoughtful', sourceLabel: 'Demo passenger reminders · In-app only',
   passengerReminders: available, reply: available
-   ? 'Choose a travel reminder and a delay below, review the exact time and time zone, then confirm saving. Nothing has been saved yet. Reminders work only while this local demo page and conversation remain active; they do not track flight changes or send email or texts.'
+   ? 'Choose a travel reminder and a delay below, review the exact time and time zone, then confirm saving. Nothing has been saved yet. Reminders work only while this demo page and conversation remain active; they do not track flight changes or send email or texts.'
    : 'Passenger reminders are available in the local demo only. This hosted preview cannot save or deliver reminders; nothing has been scheduled.' };
 }
 export class ReminderError extends Error {
