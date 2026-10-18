@@ -16,7 +16,7 @@ These documents collect common passenger questions for the fictional Cloudline A
 
 ## Use rules for Noor
 
-- Treat these pages as **drafts**, not as verified policy or live flight data. The prototype only retrieves one matching question section and displays a link to its draft page.
+- Treat these pages as **drafts**, not as verified policy or live flight data. The prototype ranks relevant question sections across the seven allowlisted pages, retrieves up to three passages, and displays their draft page, section and line references.
 - Return the page title, version, and review date with each retrieved passage. The demo displays the applicable source link beside Noor's answer. Keep the draft label until an owner approves the page.
 - Booking details, gate and flight status, baggage tracking, and current airport operations require authorized live sources. A static page must never stand in for them.
 - If an answer depends on the airline, fare, route, airport, or passenger's booking and no approved source is available, Noor should say she cannot verify it and point the passenger to the airline's official channel or airport staff.

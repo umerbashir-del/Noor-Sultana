@@ -1,0 +1,184 @@
+[
+  {
+    "id": "memory-baggage-after-trimming",
+    "turns": [
+      {
+        "message": "Please answer in Spanish. Keep your replies brief.",
+        "tools": [],
+        "matches": []
+      },
+      {
+        "message": "How many checked bags can I take on CL204?",
+        "context": {
+          "demoFare": "business"
+        },
+        "tools": [
+          "baggage_allowance"
+        ],
+        "evidence": "grounded",
+        "matches": [
+          "2 checked bags",
+          "32 kg"
+        ]
+      },
+      {
+        "message": "Thanks",
+        "tools": [],
+        "matches": []
+      },
+      {
+        "message": "Got it",
+        "tools": [],
+        "matches": []
+      },
+      {
+        "message": "Okay",
+        "tools": [],
+        "matches": []
+      },
+      {
+        "message": "Thank you",
+        "tools": [],
+        "matches": []
+      },
+      {
+        "message": "Great",
+        "tools": [],
+        "matches": []
+      },
+      {
+        "message": "Thanks",
+        "tools": [],
+        "matches": []
+      },
+      {
+        "message": "Okay",
+        "tools": [],
+        "matches": []
+      },
+      {
+        "message": "And now?",
+        "context": {
+          "demoFare": "basic"
+        },
+        "tools": [
+          "baggage_allowance"
+        ],
+        "evidence": "grounded",
+        "matches": [
+          "No checked bag is included"
+        ]
+      },
+      {
+        "message": "Which language did I ask you to use for your replies in this conversation? Give its English name.",
+        "tools": [],
+        "matches": [
+          "Spanish"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "memory-service-and-topic-switch",
+    "turns": [
+      {
+        "message": "Have I specified a preferred reply language earlier in this conversation? Say whether I have given a preference.",
+        "tools": [],
+        "matches": [],
+        "patterns": [
+          "\\b(?:no|not|haven.t|hasn.t|don.t)\\b"
+        ]
+      },
+      {
+        "message": "Is vegetarian food available on CL204?",
+        "context": {
+          "demoMealStock": "limited"
+        },
+        "tools": [
+          "meals_and_services"
+        ],
+        "evidence": "grounded",
+        "matches": [
+          "1 portions",
+          "Stock is limited"
+        ]
+      },
+      {
+        "message": "Thanks",
+        "tools": [],
+        "matches": []
+      },
+      {
+        "message": "Got it",
+        "tools": [],
+        "matches": []
+      },
+      {
+        "message": "Okay",
+        "tools": [],
+        "matches": []
+      },
+      {
+        "message": "Thank you",
+        "tools": [],
+        "matches": []
+      },
+      {
+        "message": "Great",
+        "tools": [],
+        "matches": []
+      },
+      {
+        "message": "Thanks",
+        "tools": [],
+        "matches": []
+      },
+      {
+        "message": "Okay",
+        "tools": [],
+        "matches": []
+      },
+      {
+        "message": "Is it still available?",
+        "context": {
+          "demoScenario": "landed",
+          "demoMealStock": "limited"
+        },
+        "tools": [
+          "meals_and_services"
+        ],
+        "evidence": "grounded",
+        "matches": [
+          "service has ended"
+        ]
+      },
+      {
+        "message": "What checked baggage does my ticket include?",
+        "context": {
+          "demoFare": "basic"
+        },
+        "tools": [
+          "baggage_allowance"
+        ],
+        "evidence": "grounded",
+        "matches": [
+          "No checked bag is included"
+        ]
+      },
+      {
+        "message": "And now?",
+        "context": {
+          "demoFare": "business"
+        },
+        "tools": [
+          "baggage_allowance"
+        ],
+        "evidence": "grounded",
+        "matches": [
+          "2 checked bags",
+          "32 kg"
+        ]
+      }
+    ]
+  }
+]

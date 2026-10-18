@@ -1,8 +1,22 @@
+import {mkdtemp,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join,resolve,sep,basename} from 'node:path';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { once } from 'node:events';
 
 test('health, visitor cookies, origin checks, and session isolation work over HTTP', async () => {
+ const testRoot=resolve(tmpdir());
+ const testData=await mkdtemp(join(testRoot,'noor-security-http-'));
+ process.env.NOOR_DATA_DIR=testData;
+ const originalFetch=globalThis.fetch;let modelCalls=0;
+ process.env.ANTHROPIC_API_KEY='offline-http-test-key';
+ globalThis.fetch=async(url,options)=>{
+  if(String(url)==='https://api.anthropic.com/v1/messages/count_tokens')return Response.json({input_tokens:100});
+  if(String(url)==='https://api.anthropic.com/v1/messages')return Response.json({content:++modelCalls===1?[{type:'tool_use',id:'prepare',name:'prepare_arrival_email',input:{}}]:[{type:'text',text:'{"reply":"Review and confirm below."}'}],usage:{input_tokens:100,output_tokens:20}});
+  if(new URL(url).hostname!=='127.0.0.1')throw Error('External network disabled in offline tests');
+  return originalFetch(url,options);
+ };
   process.env.PORT = '0';
   process.env.NOOR_SKIP_VOICE_WARMUP = '1';
   process.env.NOOR_EMAIL_DB = ':memory:';
@@ -35,13 +49,17 @@ test('health, visitor cookies, origin checks, and session isolation work over HT
       body: JSON.stringify({ message: 'Prepare my arrival email draft.' }),
     });
     assert.equal(chat.status, 200);
-    assert.match((await chat.json()).reply, /verify/);
+    const prepared=await chat.json();
+    assert.match(prepared.reply, /review.*confirm/i);
+    assert.ok(prepared.emailDraft);
 
     const forbidden = await fetch(`${base}/api/stop`, {
       method: 'POST', headers: { cookie: aliceCookies, origin: 'https://other.example' },
     });
     assert.equal(forbidden.status, 403);
   } finally {
+    globalThis.fetch=originalFetch;
     await new Promise((resolve) => server.close(resolve));
+    if(!resolve(testData).startsWith(testRoot+sep)||!basename(testData).startsWith('noor-security-http-'))throw Error('Unsafe test cleanup');await rm(testData,{recursive:true,force:true});
   }
 });

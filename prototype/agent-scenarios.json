@@ -1,0 +1,249 @@
+[
+  {
+    "id": "on-time-status",
+    "message": "Are we leaving on schedule?",
+    "context": {
+      "demoScenario": "on-time"
+    },
+    "tools": [
+      {
+        "name": "flight_status",
+        "input": {
+          "flightId": "CL204"
+        }
+      }
+    ],
+    "contains": "On time"
+  },
+  {
+    "id": "delayed-status",
+    "message": "Are we running late?",
+    "context": {
+      "demoScenario": "delayed"
+    },
+    "tools": [
+      {
+        "name": "flight_status",
+        "input": {
+          "flightId": "CL204"
+        }
+      }
+    ],
+    "contains": "Delayed by 45"
+  },
+  {
+    "id": "landed-status",
+    "message": "Have we touched down?",
+    "context": {
+      "demoScenario": "landed"
+    },
+    "tools": [
+      {
+        "name": "flight_status",
+        "input": {
+          "flightId": "CL204"
+        }
+      }
+    ],
+    "contains": "2:35 PM"
+  },
+  {
+    "id": "connection-after-delay",
+    "message": "Will I still make my connection?",
+    "context": {
+      "demoScenario": "delayed"
+    },
+    "tools": [
+      {
+        "name": "connection_assistant",
+        "input": {
+          "inboundFlight": "CL204",
+          "onwardFlight": "CL310"
+        }
+      }
+    ],
+    "contains": "30 minutes"
+  },
+  {
+    "id": "basic-fare",
+    "message": "Is a suitcase included with my ticket?",
+    "context": {
+      "demoFare": "basic"
+    },
+    "tools": [
+      {
+        "name": "baggage_allowance",
+        "input": {
+          "flightId": "CL204",
+          "bagType": "all"
+        }
+      }
+    ],
+    "contains": "No checked bag"
+  },
+  {
+    "id": "business-follow-up",
+    "message": "And how many checked bags can I take?",
+    "history": [
+      {
+        "role": "user",
+        "content": "My selected demo fare is Business."
+      },
+      {
+        "role": "assistant",
+        "content": "I can check its allowance."
+      }
+    ],
+    "context": {
+      "demoFare": "business"
+    },
+    "tools": [
+      {
+        "name": "baggage_allowance",
+        "input": {
+          "flightId": "CL204",
+          "bagType": "all"
+        }
+      }
+    ],
+    "contains": "2 checked bags"
+  },
+  {
+    "id": "airport-directions",
+    "message": "Where do I collect my bags?",
+    "tools": [
+      {
+        "name": "airport_guide",
+        "input": {
+          "airport": "HND",
+          "destination": "baggage_claim"
+        }
+      }
+    ],
+    "contains": "Carousel B2"
+  },
+  {
+    "id": "limited-meal",
+    "message": "Any vegetarian food left?",
+    "context": {
+      "demoMealStock": "limited"
+    },
+    "tools": [
+      {
+        "name": "meals_and_services",
+        "input": {
+          "flightId": "CL204",
+          "category": "all"
+        }
+      }
+    ],
+    "contains": "Stock is limited"
+  },
+  {
+    "id": "landed-service",
+    "message": "Can I still get a meal?",
+    "context": {
+      "demoScenario": "landed"
+    },
+    "tools": [
+      {
+        "name": "meals_and_services",
+        "input": {
+          "flightId": "CL204",
+          "category": "all"
+        }
+      }
+    ],
+    "contains": "service has ended"
+  },
+  {
+    "id": "two-lookups",
+    "message": "What bags are included and is vegetarian food available?",
+    "tools": [
+      {
+        "name": "baggage_allowance",
+        "input": {
+          "flightId": "CL204",
+          "bagType": "all"
+        }
+      },
+      {
+        "name": "meals_and_services",
+        "input": {
+          "flightId": "CL204",
+          "category": "all"
+        }
+      }
+    ],
+    "contains": "1 checked bag"
+  },
+  {
+    "id": "crew-review-only",
+    "message": "Could someone help with my seat?",
+    "tools": [
+      {
+        "name": "prepare_crew_request",
+        "input": {
+          "category": "seat",
+          "details": "Seat assistance, not a medical emergency"
+        }
+      }
+    ],
+    "contains": "Nothing has been submitted",
+    "flag": "crewAssistance"
+  },
+  {
+    "id": "reminder-review-only",
+    "message": "Remind me to check boarding.",
+    "tools": [
+      {
+        "name": "prepare_reminder",
+        "input": {
+          "kind": "boarding"
+        }
+      }
+    ],
+    "contains": "Nothing has been submitted",
+    "flag": "passengerReminders"
+  },
+  {
+    "id": "japanese-phrase",
+    "message": "How do I ask where baggage claim is in Japanese?",
+    "tools": [
+      {
+        "name": "translate_travel_phrase",
+        "input": {
+          "phrase": "Where is baggage claim?",
+          "language": "japanese"
+        }
+      }
+    ],
+    "contains": "手荷物受取所"
+  },
+  {
+    "id": "unsupported-language",
+    "message": "Translate water please into French.",
+    "tools": [],
+    "contains": "Japanese and Spanish only",
+    "reply": "This demo supports Japanese and Spanish only."
+  },
+  {
+    "id": "email-review-only",
+    "message": "Prepare the arrival email.",
+    "tools": [
+      {
+        "name": "prepare_arrival_email",
+        "input": {}
+      }
+    ],
+    "contains": "Nothing has been submitted",
+    "flag": "emailDraft"
+  },
+  {
+    "id": "unrelated-refusal",
+    "message": "What is 2+2?",
+    "tools": [],
+    "reply": "I can help with passenger questions, but cannot answer unrelated arithmetic.",
+    "contains": "cannot answer unrelated"
+  }
+]

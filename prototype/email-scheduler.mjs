@@ -1,3 +1,4 @@
+import { migrateDatabase } from './database-migrations.mjs';
 import { createHash, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -49,31 +50,8 @@ function publicJob(row) {
 export function createEmailScheduler({ dbPath = ':memory:', provider, clock = Date.now }) {
   if (dbPath !== ':memory:') mkdirSync(dirname(dbPath), { recursive: true });
   const db = new DatabaseSync(dbPath);
-  db.exec(`
-    PRAGMA journal_mode = WAL;
-    PRAGMA secure_delete = ON;
-    CREATE TABLE IF NOT EXISTS email_verifications (
-      id TEXT PRIMARY KEY, session_id TEXT NOT NULL, email TEXT NOT NULL,
-      code_hash TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, verified_at INTEGER,
-      provider_id TEXT, send_state TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS email_verifications_email_time ON email_verifications(email, created_at);
-    CREATE TABLE IF NOT EXISTS email_jobs (
-      id TEXT PRIMARY KEY, verification_id TEXT NOT NULL UNIQUE,
-      email TEXT, subject TEXT, body TEXT, review_hash TEXT,
-      scheduled_at INTEGER NOT NULL, status TEXT NOT NULL,
-      confirmed_at INTEGER NOT NULL, sending_at INTEGER, attempts INTEGER NOT NULL DEFAULT 0,
-      provider_id TEXT, sent_at INTEGER, cancelled_at INTEGER, failed_at INTEGER,
-      delivery_event TEXT, delivery_checked_at INTEGER, failure_reason TEXT
-    );
-    CREATE INDEX IF NOT EXISTS email_jobs_due ON email_jobs(status, scheduled_at);
-    CREATE INDEX IF NOT EXISTS email_jobs_email ON email_jobs(email);
-    CREATE TABLE IF NOT EXISTS email_events (
-      id INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT NOT NULL,
-      event TEXT NOT NULL, at INTEGER NOT NULL, detail TEXT
-    );
-  `);
+  db.exec('PRAGMA secure_delete=ON; PRAGMA journal_mode=WAL;');
+  try { migrateDatabase(db, 'email', { dbPath }); } catch (error) { db.close(); throw error; }
 
   const challengeById = db.prepare('SELECT * FROM email_verifications WHERE id = ?');
   const eventInsert = db.prepare('INSERT INTO email_events(job_id, event, at, detail) VALUES(?, ?, ?, ?)');

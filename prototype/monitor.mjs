@@ -1,4 +1,6 @@
 const routeNames = [
+  [/^\/api\/crew$/, 'crew'],
+  [/^\/api\/reminders$/, 'reminders'],
   [/^\/api\/session(?:\/end)?$/, 'session'],
   [/^\/api\/chat$/, 'chat'],
   [/^\/api\/speak$/, 'speak'],

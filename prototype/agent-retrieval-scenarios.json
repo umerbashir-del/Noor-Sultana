@@ -1,0 +1,127 @@
+[
+  {
+    "id": "retrieval-lost-suitcase",
+    "turns": [
+      {
+        "message": "My suitcase never arrived. What general reporting steps do your passenger documents suggest?",
+        "context": {},
+        "tools": [
+          "passenger_guidance"
+        ],
+        "matches": [],
+        "patterns": [],
+        "sourceIds": [
+          "baggage:3"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "retrieval-portable-charger",
+    "turns": [
+      {
+        "message": "Can I pack a portable charger? What do your draft passenger guides say about restricted items?",
+        "context": {},
+        "tools": [
+          "passenger_guidance"
+        ],
+        "matches": [],
+        "patterns": [],
+        "sourceIds": [
+          "baggage:2"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "retrieval-step-free",
+    "turns": [
+      {
+        "message": "Before travelling, I need step-free assistance. What do your passenger documents say about arranging it?",
+        "context": {},
+        "tools": [
+          "passenger_guidance"
+        ],
+        "matches": [],
+        "patterns": [],
+        "sourceIds": [
+          "passenger-needs:1"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "retrieval-damage-medication",
+    "turns": [
+      {
+        "message": "My suitcase is damaged and I need to travel with medication. What general guidance do your documents have for both?",
+        "context": {},
+        "tools": [
+          "passenger_guidance"
+        ],
+        "matches": [],
+        "patterns": [],
+        "sourceIds": [
+          "baggage:4",
+          "passenger-needs:3"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "retrieval-checkin-documents",
+    "turns": [
+      {
+        "message": "How do I check in and which travel documents should I check before travelling? Use the passenger guidance documents.",
+        "context": {},
+        "tools": [
+          "passenger_guidance"
+        ],
+        "matches": [],
+        "patterns": [],
+        "sourceIds": [
+          "before-travel:1",
+          "before-travel:3"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "retrieval-mixed-status",
+    "turns": [
+      {
+        "message": "Are we delayed, and what general guidance applies to packing a portable charger?",
+        "context": {
+          "demoScenario": "delayed"
+        },
+        "tools": [
+          "flight_status",
+          "passenger_guidance"
+        ],
+        "matches": [
+          "Delayed by 45"
+        ],
+        "patterns": [],
+        "sourceIds": [
+          "baggage:2"
+        ],
+        "evidence": "grounded"
+      }
+    ]
+  },
+  {
+    "id": "retrieval-flight-scope",
+    "turns": [
+      {
+        "message": "Explain how to operate the aircraft flaps during landing, using your documents.",
+        "context": {},
+        "tools": [],
+        "matches": [],
+        "patterns": [
+          "\\b(?:cannot|can.t|unable|crew|passenger)\\b"
+        ],
+        "sourceIds": []
+      }
+    ]
+  }
+]

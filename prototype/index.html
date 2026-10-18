@@ -18,6 +18,7 @@
       <section class="cabin" aria-label="Airplane cabin scene">
         <div class="scene-shade" aria-hidden="true"></div>
 
+        <div class="scene-caption"><p>Welcome aboard</p><h1>Your in-flight guide.</h1><span>Meet Noor · Cloudline Air</span></div>
         <div class="noor-wrap" id="noorWrap" data-pose="welcome" role="img" aria-label="Noor, your in-flight guide">
           <img class="noor-sprite" src="./assets/noor.png" alt="" />
           <img class="noor-sprite noor-thinking" src="./assets/noor-thinking.png" alt="" />
@@ -34,12 +35,14 @@
         </aside>
 
         <section class="conversation" aria-label="Chat with Noor">
+          <header class="chat-heading"><div><strong>Chat with Noor</strong><p>A little help for every part of your journey.</p></div><span class="demo-badge">Passenger demo</span></header>
           <div class="dialogue" id="dialogue" aria-live="polite" aria-atomic="true">
             <p class="user-line" id="userLine" hidden><span class="speaker">YOU</span><span id="userText"></span></p>
             <p class="noor-line"><span class="speaker">NOOR</span><span id="responseText">Hi, I’m Noor. Ask me about this flight.</span></p>
             <p class="source-line" id="sourceLine">Fictional flight information · Not live</p>
             <div class="knowledge-sources" id="knowledgeSources" hidden></div>
           </div>
+          <details class="tools-drawer" id="passengerTools"><summary>Passenger details <span>Review with Noor</span></summary><div class="tools-content">
           <div class="weather-controls" aria-label="Passenger shortcuts">
             <button class="weather-button" id="boardingTimeButton" type="button" disabled>Boarding time</button>
             <button class="weather-button" id="baggageGuidanceButton" type="button" disabled>Baggage guidance</button>
@@ -82,12 +85,84 @@
               <ul id="emailJobList"></ul>
             </div>
           </section>
+          <div class="mic-device-controls" aria-label="Demo flight status scenarios">
+            <label for="demoFlightScenario">Flight status scenario</label>
+            <select id="demoFlightScenario"><option value="on-time">On time</option><option value="delayed">Delayed · 45 minutes</option><option value="landed">Landed</option></select>
+            <span>Simulated CL 204 + connection CL 310 · Ask for flight status, connection directions, or “Will I make my connection?”</span>
+          </div>
+          <div class="mic-device-controls" aria-label="Demo baggage fare">
+            <label for="demoBaggageFare">Demo ticket fare</label>
+            <select id="demoBaggageFare"><option value="basic">Economy Basic</option><option value="standard" selected>Economy Standard</option><option value="business">Business</option></select>
+            <span>Fictional CL 204 policy · Ask “Does my ticket include a checked bag?”</span>
+          </div>
+          <details class="weather-card" id="demoAirportGuide">
+            <summary>Demo airport guide · Invented layout</summary>
+            <p>Fictional Haneda arrival corridor → Junction A: toilets, information desk, and step-free assistance desk.</p>
+            <p>After required arrivals processing → Baggage Hall B (sample Carousel B2) → arrivals exit → Transport Hall C.</p>
+            <p>Ask Noor “Where is baggage claim?” or “How do I reach the train station?” This is not a real airport map.</p>
+          </details>
+          <details class="email-card" id="crewPanel">
+            <summary>Demo crew assistance · Seat 12A</summary>
+            <p>No real crew contacted. For urgent help, contact cabin crew directly. Requests expire with this conversation or a server restart.</p>
+            <label for="crewCategory">Request type</label>
+            <select id="crewCategory"><option value="seat">Seat assistance</option><option value="comfort">Comfort item</option><option value="general">General assistance</option></select>
+            <label for="crewDetails">Message for demo crew</label>
+            <input id="crewDetails" type="text" maxlength="200" autocomplete="off" placeholder="For example: My seat recline is stuck" />
+            <div class="email-review-controls"><button id="crewReviewButton" type="button">Review request</button><button id="crewRefreshButton" type="button">Refresh my requests</button></div>
+            <p id="crewStatus" role="status">Nothing submitted. No real crew contacted.</p>
+            <ul id="crewRequests" aria-label="My demo crew requests"></ul>
+          </details>
+          <div class="mic-device-controls" aria-label="Demo meal inventory">
+            <label for="demoMealStock">Demo meal and comfort stock</label>
+            <select id="demoMealStock"><option value="available">Available</option><option value="limited">Limited</option><option value="unavailable">Unavailable</option></select>
+            <span>Fictional CL 204 · Ask about vegetarian meals, drinks, Wi-Fi, or blankets. Lookup only; no orders.</span>
+          </div>
+          <details class="email-card" id="reminderPanel">
+            <summary>Demo passenger reminders · In-app only</summary>
+            <p>Keep this page and conversation active. Reminders end with the session or a server restart. Conversations expire after 15 minutes of inactivity or two hours total. No email, texts, or automatic flight updates.</p>
+            <label for="reminderKind">Travel reminder</label>
+            <select id="reminderKind"><option value="boarding">Check boarding information</option><option value="connection">Check onward connection details</option><option value="belongings">Check your belongings</option><option value="comfort">Comfort break when permitted by crew</option></select>
+            <label for="reminderMinutes">Remind me in (minutes)</label>
+            <input id="reminderMinutes" type="number" min="1" max="120" step="1" value="1" />
+            <label for="reminderTimeZone">Time zone</label>
+            <input id="reminderTimeZone" type="text" readonly />
+            <div class="email-review-controls"><button id="reminderReviewButton" type="button">Review reminder</button><button id="reminderRefreshButton" type="button">Refresh my reminders</button></div>
+            <p id="reminderStatus" role="status">Nothing scheduled. Keep this page and conversation active.</p>
+            <p id="reminderAlert" role="status" aria-live="polite"></p>
+            <ul id="reminderList" aria-label="My demo reminders"></ul>
+          </details>
+          <details class="email-card" id="translatorPanel">
+            <summary>Demo travel phrase translator</summary>
+            <p>Fixed English phrases into Japanese or Spanish. Pronunciation guides are approximate.</p>
+            <label for="demoTranslationLanguage">Translate into</label>
+            <select id="demoTranslationLanguage"><option value="japanese">Japanese</option><option value="spanish">Spanish</option></select>
+            <label for="travelPhrase">Travel phrase</label>
+            <select id="travelPhrase"><option>Where is baggage claim?</option><option>Where are the toilets?</option><option>Where is my boarding gate?</option><option>Could you help me, please?</option><option>Could I have some water, please?</option><option>Do you have a vegetarian meal?</option></select>
+            <button id="translatePhraseButton" type="button">Translate phrase</button>
+            <div id="translationResult" hidden>
+              <p id="translationOriginal"></p>
+              <p id="translatedPhrase"></p>
+              <p id="translationPronunciation"></p>
+              <button id="translationCopyButton" type="button">Copy translation</button>
+              <span id="translationCopyStatus" role="status"></span>
+            </div>
+          </details>
+          </div></details>
+          <div class="composer">
+          <nav class="demo-prompts" aria-label="Demo feature questions"><span class="demo-prompts-label">Try a feature</span><button class="demo-prompt" type="button" data-demo-question="What is the status of our demo flight?" title="What is the status of our demo flight?" disabled>Flight status</button><button class="demo-prompt" type="button" data-demo-question="Show me the FR24 sandbox flight-tracking sample." title="Show me the FR24 sandbox flight-tracking sample." disabled>Flight tracking</button><button class="demo-prompt" type="button" data-demo-question="Will I make my connection, and where do I go for my next flight?" title="Will I make my connection, and where do I go for my next flight?" disabled>Connection</button><button class="demo-prompt" type="button" data-demo-question="Does my demo ticket include a checked bag?" title="Does my demo ticket include a checked bag?" disabled>Baggage</button><button class="demo-prompt" type="button" data-demo-question="Where is baggage claim in the demo airport?" title="Where is baggage claim in the demo airport?" disabled>Airport guide</button><button class="demo-prompt" type="button" data-demo-question="Could someone help with my seat?" title="Could someone help with my seat?" disabled>Crew assistance</button><button class="demo-prompt" type="button" data-demo-question="Are vegetarian meals available, and is there Wi-Fi?" title="Are vegetarian meals available, and is there Wi-Fi?" disabled>Meals & services</button><button class="demo-prompt" type="button" data-demo-question="Help me set a one-minute reminder to check boarding information." title="Help me set a one-minute reminder to check boarding information." disabled>Reminder</button><button class="demo-prompt" type="button" data-demo-question="How do I ask where baggage claim is in Japanese?" title="How do I ask where baggage claim is in Japanese?" disabled>Translate</button><button class="demo-prompt" type="button" data-demo-question="What is the current weather near Tokyo Haneda?" title="What is the current weather near Tokyo Haneda?" disabled>Weather</button></nav><p class="demo-prompt-hint">Click a feature to ask Noor. She selects the tools.</p>
           <form class="message-form" id="messageForm">
             <label class="visually-hidden" for="messageInput">Type a message for Noor</label>
             <input id="messageInput" name="message" type="text" maxlength="500" autocomplete="off" placeholder="Ask Noor something…" disabled />
             <button class="send-button" type="submit" aria-label="Send message" disabled>Send <span aria-hidden="true">↗</span></button>
           </form>
           <p class="transcript-review" id="transcriptReview" hidden>Review the recognized words above. Edit them if needed, then press <strong>Send</strong> for Noor to answer.</p>
+          <div class="mic-controls" aria-label="Voice conversation controls">
+            <button class="mic-button" id="talkButton" type="button" disabled>🎙 Talk</button>
+            <button class="mic-button" id="doneButton" type="button" disabled>Done</button>
+            <button class="mic-button stop-button" id="stopButton" type="button">Stop</button>
+            <span id="micStatus" role="status">Press Talk to ask Noor a question.</span>
+          </div>
+          <details class="conversation-settings"><summary>Voice &amp; conversation settings</summary>
           <div class="session-controls">
             <button class="session-button" id="endConversationButton" type="button" disabled>End conversation</button>
             <span id="sessionStatus" role="status">Starting conversation…</span>
@@ -98,22 +173,29 @@
             <button class="voice-button" id="playReplyButton" type="button" hidden>▶ Play reply</button>
             <span id="voiceStatus" role="status">Turn on voice to hear Noor’s replies.</span>
           </div>
-          <div class="mic-controls" aria-label="Voice conversation controls">
-            <button class="mic-button" id="talkButton" type="button" disabled>🎙 Talk</button>
-            <button class="mic-button" id="doneButton" type="button" disabled>Done</button>
-            <button class="mic-button stop-button" id="stopButton" type="button">Stop</button>
-            <span id="micStatus" role="status">Press Talk to ask Noor a question.</span>
-          </div>
+
           <div class="mic-device-controls" id="micDeviceControls">
             <label for="micDeviceSelect">Microphone</label>
             <select id="micDeviceSelect"><option value="">Default microphone</option></select>
             <button class="voice-button" id="checkMicButton" type="button" hidden>Check microphone</button>
             <button class="voice-button" id="playRecordingButton" type="button" hidden>▶ Check recording</button>
           </div>
+          </details>
           <p class="demo-note">For urgent help, contact cabin crew.</p>
+          </div>
         </section>
       </section>
     </main>
+    <dialog class="email-review-dialog" id="reminderReviewDialog" aria-labelledby="reminderReviewTitle">
+      <h2 id="reminderReviewTitle">Review demo reminder</h2>
+      <pre id="reminderReviewText"></pre>
+      <div class="review-actions"><button id="reminderEditButton" type="button">Back to edit</button><button id="reminderConfirmButton" type="button">Confirm reminder</button></div>
+    </dialog>
+    <dialog class="email-review-dialog" id="crewReviewDialog" aria-labelledby="crewReviewTitle">
+      <h2 id="crewReviewTitle">Review demo assistance request</h2>
+      <pre id="crewReviewText"></pre>
+      <div class="review-actions"><button id="crewEditButton" type="button">Back to edit</button><button id="crewConfirmButton" type="button">Confirm demo submission</button></div>
+    </dialog>
     <dialog class="email-review-dialog" id="emailReviewDialog" aria-labelledby="emailReviewTitle" aria-describedby="emailReviewNotice">
       <div class="review-heading">
         <span class="review-step">EMAIL DRAFT · REVIEW</span>

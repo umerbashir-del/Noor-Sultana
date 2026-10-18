@@ -159,3 +159,43 @@ button { color: inherit; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
+
+/* Compact version of the original bottom dialogue layout. */
+[hidden] { display: none !important; }
+.experience { height: 100dvh; min-height: 540px; }
+.cabin { min-height: 0; }
+.chat-heading, .scene-caption { display: none; }
+.conversation { max-height: calc(100dvh - 90px); }
+.dialogue { max-height: 180px; overflow-y: auto; }
+.composer { padding: 0; }
+.conversation-settings { margin-top: 8px; color: var(--muted); font-size: 10px; max-height: 110px; overflow-y: auto; }
+.conversation-settings summary { cursor: pointer; padding: 4px 0; }
+.tools-drawer { max-height: 28vh; overflow-y: auto; margin: 10px 0; border: 1px solid var(--line); border-radius: 7px; }
+.tools-drawer > summary { padding: 9px; cursor: pointer; color: var(--gold); font-size: 11px; }
+.tools-drawer > summary span { float: right; color: var(--muted); font-size: 10px; }
+details.email-card, details.weather-card { display: block; }
+.email-card label { display: block; margin: 8px 0 4px; }
+.email-card select { max-width: 100%; padding: 7px; color: var(--ink); background: #172235; border: 1px solid var(--line); border-radius: 5px; }
+.email-card li { margin: 8px 0; line-height: 1.5; overflow-wrap: anywhere; }
+.email-review-dialog pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.6; }
+#translatedPhrase { font-size: 20px; color: var(--gold); }
+button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+/* Passenger UI exposes results and confirmations, not model tool controls. */
+.tools-content > .weather-controls,
+.tools-content > .mic-device-controls,
+.tools-content > details,
+#translatorPanel label,
+#translatorPanel select,
+#translatePhraseButton { display: none !important; }
+.tools-content > details[data-active-tool] { display: block !important; }
+.tools-drawer:not([open]) { display: none; }
+.tools-content { padding: 10px; }
+
+/* Example questions prepare a prompt; Claude still chooses the tools. */
+.demo-prompts { display: flex; align-items: center; gap: 7px; overflow-x: auto; padding: 4px 0 8px; scrollbar-width: thin; scrollbar-color: #59647a transparent; }
+.demo-prompts-label { flex: 0 0 auto; color: var(--gold); font-size: 10px; }
+.demo-prompt { flex: 0 0 auto; padding: 7px 10px; border: 1px solid var(--line); border-radius: 20px; background: rgba(255,255,255,.05); color: var(--ink); font: inherit; font-size: 11px; cursor: pointer; }
+.demo-prompt:hover, .demo-prompt:focus-visible { color: var(--gold); border-color: var(--gold); background: rgba(233,199,120,.09); }
+.demo-prompt:disabled { opacity: .45; cursor: default; }
+.demo-prompt-hint { margin: 0 0 9px; color: var(--muted); font-size: 9px; }

@@ -83,3 +83,11 @@ Talk automatically turns Noor's voice on. The microphone is active only between 
 The server uses the existing Chatterbox Python environment at `../chatterboc-demo/.venv/Scripts/python.exe`, which now also has `faster-whisper` installed. If you move this project or use another environment, set `CHATTERBOX_PYTHON` in `.env.local` to the full path of a Python executable with `chatterbox-tts`, PyTorch, torchaudio, and `faster-whisper` installed. You can set `ASR_PYTHON` separately if speech recognition uses another environment. The server starts loading Chatterbox when it launches, so the first spoken reply waits less if you allow that startup to finish. Later replies reuse the model. Microphone recordings are processed locally for transcription; the transcript is sent to Claude. The audio reference and generated speech are not sent to Claude.
 
 The Hope reference is a 12.5-second ElevenLabs clip converted to mono 24 kHz, 16-bit PCM WAV. The hosted Chatterbox voice sends this clip to Replicate as a data URI with each speech request. The local demo uses it when `NOOR_VOICE_REFERENCE=voice/noor-reference.wav` is set in `.env.local`; restart `node server.mjs` after changing that setting. Chatterbox follows the reference voice and its delivery, though its generated speech may not match the source exactly.
+
+## Agent traces and scenario tests
+
+See [local agent tracing and evaluation](./AGENT-TRACING.md) for private local traces, offline scenario tests, and opt-in live evaluations.
+
+## Local database maintenance
+
+See [database backups, restore checks and migrations](./DATABASES.md). Use `npm run db:backup` from the repository root for a verified snapshot, and `npm run test:database` for recovery and migration tests. The three databases remain separate; confirmed crew requests and reminders still last only for the active local session.

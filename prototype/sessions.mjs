@@ -1,3 +1,4 @@
+import { cleanSessionMemory, updateSessionMemory } from './session-memory.mjs';
 import { randomBytes } from 'node:crypto';
 
 export const idleSessionMs = 15 * 60 * 1000;
@@ -24,7 +25,7 @@ export function createSessionStore({ clock = Date.now } = {}) {
       const now = clock();
       const session = {
         id: randomBytes(32).toString('hex'), visitorId, createdAt: now, lastActiveAt: now,
-        revision: 0, messages: [],
+        revision: 0, messages: [], memory: cleanSessionMemory(),
       };
       sessions.set(session.id, session);
       return session;
@@ -52,8 +53,9 @@ export function createSessionStore({ clock = Date.now } = {}) {
     context(session, message) {
       return [...session.messages.slice(-(maxStoredMessages - 2)), { role: 'user', content: message }];
     },
-    commit(session, revision, message, reply) {
+    commit(session, revision, message, reply, sources=[]) {
       if (!active(session) || session.revision !== revision) return false;
+      session.memory=updateSessionMemory(session.memory,message,sources);
       session.messages.push({ role: 'user', content: message }, { role: 'assistant', content: reply });
       if (session.messages.length > maxStoredMessages) {
         session.messages.splice(0, session.messages.length - maxStoredMessages);

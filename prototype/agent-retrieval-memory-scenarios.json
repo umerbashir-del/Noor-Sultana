@@ -1,0 +1,555 @@
+[
+  {
+    "id": "retrieval-memory-charger-after-trimming",
+    "turns": [
+      {
+        "message": "Can I pack a portable charger? What do your draft passenger guides say about restricted items?",
+        "tools": [
+          "passenger_guidance"
+        ],
+        "matches": [],
+        "sourceIds": [
+          "baggage:2"
+        ]
+      },
+      {
+        "message": "Thanks",
+        "tools": [],
+        "matches": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Got it",
+        "tools": [],
+        "matches": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Okay",
+        "tools": [],
+        "matches": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Thank you",
+        "tools": [],
+        "matches": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Great",
+        "tools": [],
+        "matches": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Thanks",
+        "tools": [],
+        "matches": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Okay",
+        "tools": [],
+        "matches": [],
+        "sourceIds": []
+      },
+      {
+        "message": "And now?",
+        "tools": [
+          "passenger_guidance"
+        ],
+        "matches": [],
+        "sourceIds": [
+          "baggage:2"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "retrieval-memory-limited-follow-up",
+    "turns": [
+      {
+        "message": "Can I pack a portable charger, and what is our demo flight status?",
+        "useTools": false,
+        "setup": "deterministic-demo",
+        "tools": [],
+        "matches": [
+          "Demo scenario: On time"
+        ],
+        "sourceIds": []
+      },
+      {
+        "message": "Thanks",
+        "tools": [],
+        "matches": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Got it",
+        "tools": [],
+        "matches": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Okay",
+        "tools": [],
+        "matches": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Thank you",
+        "tools": [],
+        "matches": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Great",
+        "tools": [],
+        "matches": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Thanks",
+        "tools": [],
+        "matches": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Okay",
+        "tools": [],
+        "matches": [],
+        "sourceIds": []
+      },
+      {
+        "message": "What about the document guidance again?",
+        "tools": [
+          "passenger_guidance"
+        ],
+        "matches": [],
+        "sourceIds": [
+          "baggage:2"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mixed-memory-flight-guidance",
+    "turns": [
+      {
+        "message": "Are we delayed, and what do the passenger documents say about packing a portable charger?",
+        "context": {
+          "demoScenario": "delayed"
+        },
+        "tools": [
+          "flight_status",
+          "passenger_guidance"
+        ],
+        "sourceIds": [
+          "baggage:2"
+        ],
+        "evidence": "grounded"
+      },
+      {
+        "message": "Thanks",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Got it",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Okay",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Thank you",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Great",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Thanks",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Okay",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "And now?",
+        "context": {
+          "demoScenario": "landed"
+        },
+        "tools": [
+          "flight_status",
+          "passenger_guidance"
+        ],
+        "sourceIds": [
+          "baggage:2"
+        ],
+        "evidence": "grounded",
+        "matches": [
+          "landed"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mixed-memory-baggage-guidance",
+    "turns": [
+      {
+        "message": "How many checked bags are included, and what do the passenger documents say about a portable charger?",
+        "context": {
+          "demoFare": "business"
+        },
+        "tools": [
+          "baggage_allowance",
+          "passenger_guidance"
+        ],
+        "sourceIds": [
+          "baggage:2"
+        ],
+        "evidence": "grounded"
+      },
+      {
+        "message": "Thanks",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Got it",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Okay",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Thank you",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Great",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Thanks",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Okay",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "And now?",
+        "context": {
+          "demoFare": "basic"
+        },
+        "tools": [
+          "baggage_allowance",
+          "passenger_guidance"
+        ],
+        "sourceIds": [
+          "baggage:2"
+        ],
+        "evidence": "grounded",
+        "matches": [
+          "No checked bag is included"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mixed-memory-meals-guidance",
+    "turns": [
+      {
+        "message": "Is vegetarian food available, and what do the passenger documents say about a portable charger?",
+        "context": {
+          "demoMealStock": "limited"
+        },
+        "tools": [
+          "meals_and_services",
+          "passenger_guidance"
+        ],
+        "sourceIds": [
+          "baggage:2"
+        ],
+        "evidence": "grounded"
+      },
+      {
+        "message": "Thanks",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Got it",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Okay",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Thank you",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Great",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Thanks",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Okay",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "And now?",
+        "context": {
+          "demoScenario": "landed",
+          "demoMealStock": "limited"
+        },
+        "tools": [
+          "meals_and_services",
+          "passenger_guidance"
+        ],
+        "sourceIds": [
+          "baggage:2"
+        ],
+        "evidence": "grounded",
+        "matches": [
+          "service has ended"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mixed-memory-flight-guidance-limited",
+    "turns": [
+      {
+        "message": "Are we delayed, and what do the passenger documents say about packing a portable charger?",
+        "context": {
+          "demoScenario": "delayed"
+        },
+        "tools": [],
+        "sourceIds": [],
+        "useTools": false,
+        "setup": "deterministic-demo",
+        "setupSourceLabel": "Demo flight status · Simulated data · Not live"
+      },
+      {
+        "message": "Thanks",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Got it",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Okay",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Thank you",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Great",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Thanks",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Okay",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "And now?",
+        "context": {
+          "demoScenario": "landed"
+        },
+        "tools": [
+          "flight_status",
+          "passenger_guidance"
+        ],
+        "sourceIds": [
+          "baggage:2"
+        ],
+        "evidence": "grounded",
+        "matches": [
+          "landed"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mixed-memory-baggage-guidance-limited",
+    "turns": [
+      {
+        "message": "How many checked bags are included, and what do the passenger documents say about a portable charger?",
+        "context": {
+          "demoFare": "business"
+        },
+        "tools": [],
+        "sourceIds": [],
+        "useTools": false,
+        "setup": "deterministic-demo",
+        "setupSourceLabel": "Demo baggage policy v1 · Fictional Cloudline Air · Not real airline policy"
+      },
+      {
+        "message": "Thanks",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Got it",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Okay",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Thank you",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Great",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Thanks",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Okay",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "And now?",
+        "context": {
+          "demoFare": "basic"
+        },
+        "tools": [
+          "baggage_allowance",
+          "passenger_guidance"
+        ],
+        "sourceIds": [
+          "baggage:2"
+        ],
+        "evidence": "grounded",
+        "matches": [
+          "No checked bag is included"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mixed-memory-meals-guidance-limited",
+    "turns": [
+      {
+        "message": "Is vegetarian food available, and what do the passenger documents say about a portable charger?",
+        "context": {
+          "demoMealStock": "limited"
+        },
+        "tools": [],
+        "sourceIds": [],
+        "useTools": false,
+        "setup": "deterministic-demo",
+        "setupSourceLabel": "Demo meal and service lookup · Fictional CL 204 inventory · Read-only"
+      },
+      {
+        "message": "Thanks",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Got it",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Okay",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Thank you",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Great",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Thanks",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "Okay",
+        "tools": [],
+        "sourceIds": []
+      },
+      {
+        "message": "And now?",
+        "context": {
+          "demoScenario": "landed",
+          "demoMealStock": "limited"
+        },
+        "tools": [
+          "meals_and_services",
+          "passenger_guidance"
+        ],
+        "sourceIds": [
+          "baggage:2"
+        ],
+        "evidence": "grounded",
+        "matches": [
+          "service has ended"
+        ]
+      }
+    ]
+  }
+]

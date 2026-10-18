@@ -1,3 +1,17 @@
+function revealPassengerTool(data) {
+ const toolId = data.translation ? 'translatorPanel' : data.crewAssistance ? 'crewPanel' : data.passengerReminders ? 'reminderPanel' : data.emailDraft ? 'emailCard' : data.weather ? 'weatherCard' : null;
+ if (!toolId) return;
+ const drawer = document.querySelector('#passengerTools');
+ drawer.open = true;
+ document.querySelectorAll('[data-active-tool]').forEach((el) => el.removeAttribute('data-active-tool'));
+ document.getElementById(toolId).setAttribute('data-active-tool', 'true');
+ // Keep the requested tool visible inside the drawer without scrolling the character scene.
+ requestAnimationFrame(() => {
+   const tool = document.getElementById(toolId);
+   drawer.scrollTop += tool.getBoundingClientRect().top - drawer.getBoundingClientRect().top - 50;
+ });
+}
+
 const form = document.querySelector('#messageForm');
 const input = document.querySelector('#messageInput');
 const sendButton = form.querySelector('button[type="submit"]');
@@ -452,6 +466,10 @@ async function startSession(successMessage = 'Conversation ready. End it to clea
 }
 
 function clearConversationDisplay() {
+  document.querySelector('#passengerTools').open = false;
+  clearTranslationDemo();
+  clearReminderDemo();
+  clearCrewDemo();
   clearRecordingPreview();
   conversation.length = 0;
   pendingUserMessage = undefined;
@@ -707,7 +725,7 @@ function renderKnowledgeSources(sources) {
     link.href = source.url;
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
-    link.textContent = `${source.title} (draft v${source.version}; ${source.review})`;
+    link.textContent = `${source.citationId ? "[" + source.citationId + "] " : ""}${source.title}${source.section ? " — " + source.section : ""} (draft v${source.version}; ${source.review}${Number.isInteger(source.lineStart) ? "; lines " + source.lineStart + "–" + source.lineEnd : ""})`;
     knowledgeSources.append(link);
   }
   if (!knowledgeSources.childElementCount) knowledgeSources.hidden = true;
@@ -844,7 +862,7 @@ async function sendMessage(message) {
     const response = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ message: cleanMessage }),
+      body: JSON.stringify({ useTools: true, message: cleanMessage, demoScenario: document.querySelector('#demoFlightScenario')?.value || 'on-time', demoFare: document.querySelector('#demoBaggageFare')?.value || 'standard', demoMealStock: document.querySelector('#demoMealStock')?.value || 'available', demoLanguage: document.querySelector('#demoTranslationLanguage')?.value || 'japanese' }),
       signal: controller.signal,
     });
     const data = await response.json();
@@ -855,12 +873,25 @@ async function sendMessage(message) {
       throw error;
     }
 
+    revealPassengerTool(data);
+    if (data.translation || data.crewAssistance || data.passengerReminders || data.emailDraft || data.weather) document.querySelector('#passengerTools').open = true;
+    if (data.crewProposal) {
+      document.querySelector('#crewCategory').value = data.crewProposal.category;
+      document.querySelector('#crewDetails').value = data.crewProposal.details;
+    }
+    if (data.reminderProposal) {
+      document.querySelector('#reminderKind').value = data.reminderProposal.kind;
+      if (data.reminderProposal.delayMinutes !== null) document.querySelector('#reminderMinutes').value = data.reminderProposal.delayMinutes;
+    }
+    renderTranslation(data.translation);
     responseText.textContent = data.reply;
     setPose(data.expression);
     sourceLine.textContent = data.sourceLabel || 'Claude · Fictional flight information · Not live';
     renderKnowledgeSources(data.knowledgeSources);
     if (data.weather) renderWeather(data.weather);
     else weatherCard.hidden = true;
+    if (data.passengerReminders) document.querySelector('#reminderPanel').open = true;
+    if (data.crewAssistance) document.querySelector('#crewPanel').open = true;
     if (data.emailDraft) {
       renderEmailDraft(data.emailDraft);
       focusEmailAfterReply = true;
@@ -1171,6 +1202,255 @@ flightInfoButton.addEventListener('click', () => {
   flightInfoButton.setAttribute('aria-expanded', String(!isOpen));
   flightCard.hidden = isOpen;
 });
+
+
+/* Demo crew requests are scoped to the current local server session. */
+let crewDraftToken = null;
+let crewBusy = false;
+let crewViewGeneration = 0;
+function clearCrewDemo() {
+ crewViewGeneration += 1;
+ crewDraftToken = null;
+ document.querySelector('#crewPanel').open = false;
+ document.querySelector('#crewDetails').value = '';
+ document.querySelector('#crewRequests').replaceChildren();
+ document.querySelector('#crewStatus').textContent = 'No real crew contacted. Requests expire with this conversation or a server restart.';
+ document.querySelector('#crewReviewDialog').close();
+}
+async function crewApi(payload) {
+ const response = await fetch('/api/crew', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+ const result = await response.json();
+ if (!response.ok) throw new Error(result.error || 'Could not update the demo request.');
+ return result;
+}
+function renderCrewRequests(requests) {
+ const list = document.querySelector('#crewRequests');
+ list.replaceChildren();
+ for (const request of requests) {
+  const item = document.createElement('li');
+  const label = document.createElement('span');
+  label.textContent = `Seat ${request.seat} · ${request.category} · ${request.details} · ${request.status} (demo only)`;
+  item.append(label);
+  if (request.status === 'submitted') {
+   const cancel = document.createElement('button');
+   cancel.type = 'button';
+   cancel.textContent = 'Cancel request';
+   cancel.addEventListener('click', () => runCrewAction(async () => {
+    await crewApi({ action: 'cancel', id: request.id });
+    return 'Demo request cancelled. No real crew contacted.';
+   }));
+   item.append(cancel);
+  }
+  list.append(item);
+ }
+}
+async function runCrewAction(action) {
+ if (crewBusy) return;
+ if (vercelPreview) {
+  document.querySelector('#crewStatus').textContent = 'Crew requests are available in the local demo only.';
+  return;
+ }
+ if (!sessionReady) {
+  document.querySelector('#crewStatus').textContent = 'Start a conversation before using demo crew requests.';
+  return;
+ }
+ crewBusy = true;
+ const generation = crewViewGeneration;
+ const buttons = [...document.querySelectorAll('#crewPanel button, #crewReviewDialog button')];
+ buttons.forEach((b) => { b.disabled = true; });
+ try {
+  const notice = await action(generation);
+  if (generation !== crewViewGeneration) return;
+  const data = await crewApi({ action: 'list' });
+  if (generation !== crewViewGeneration) return;
+  renderCrewRequests(data.requests);
+  if (notice) document.querySelector('#crewStatus').textContent = notice;
+ } catch (error) {
+  if (generation === crewViewGeneration) document.querySelector('#crewStatus').textContent = error.message;
+ } finally {
+  crewBusy = false;
+  buttons.forEach((b) => { b.disabled = false; });
+ }
+}
+document.querySelector('#crewReviewButton').addEventListener('click', () => runCrewAction(async (generation) => {
+ const data = await crewApi({ action: 'review', category: document.querySelector('#crewCategory').value, details: document.querySelector('#crewDetails').value });
+ if (generation !== crewViewGeneration) return;
+ crewDraftToken = data.draft.token;
+ document.querySelector('#crewReviewText').textContent = `Seat ${data.draft.seat}\n${data.draft.categoryLabel}\n${data.draft.details}\n\nDemo only. No real crew will be contacted. Review expires after five minutes.`;
+ document.querySelector('#crewReviewDialog').showModal();
+ return 'Review the request, then confirm submission.';
+}));
+document.querySelector('#crewConfirmButton').addEventListener('click', () => runCrewAction(async (generation) => {
+ await crewApi({ action: 'submit', token: crewDraftToken, confirmed: true });
+ if (generation !== crewViewGeneration) return;
+ crewDraftToken = null;
+ document.querySelector('#crewReviewDialog').close();
+ return 'Demo request submitted. This does not mean help is on the way. No real crew contacted.';
+}));
+document.querySelector('#crewEditButton').addEventListener('click', () => {
+ crewDraftToken = null;
+ document.querySelector('#crewReviewDialog').close();
+});
+document.querySelector('#crewRefreshButton').addEventListener('click', () => runCrewAction(async () => 'Showing requests for this conversation only.'));
+
+
+let reminderToken = null;
+let reminderBusy = false;
+let reminderGeneration = 0;
+let reminderTimer;
+let reminderNotified = new Set();
+function clearReminderDemo() {
+ reminderGeneration += 1;
+ clearTimeout(reminderTimer);
+ reminderToken = null;
+ reminderNotified.clear();
+ document.querySelector('#reminderList').replaceChildren();
+ document.querySelector('#reminderAlert').textContent = '';
+ document.querySelector('#reminderStatus').textContent = 'Nothing scheduled. Keep this page and conversation active.';
+ document.querySelector('#reminderPanel').open = false;
+ document.querySelector('#reminderReviewDialog').close();
+}
+function reminderTime(item) {
+ return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'long', timeZone: item.timeZone }).format(new Date(item.dueAt)) + ' (' + item.timeZone + ')';
+}
+async function reminderApi(payload) {
+ const response = await fetch('/api/reminders', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+ const result = await response.json();
+ if (!response.ok) throw new Error(result.error || 'Reminder service is unavailable.');
+ return result;
+}
+function renderReminders(items) {
+ clearTimeout(reminderTimer);
+ const list = document.querySelector('#reminderList');
+ list.replaceChildren();
+ for (const item of items) {
+  const row = document.createElement('li');
+  const label = document.createElement('span');
+  label.textContent = item.message + ' · ' + reminderTime(item) + ' · ' + item.status + ' (demo)';
+  row.append(label);
+  if (item.status === 'pending' || item.status === 'due') {
+   const cancel = document.createElement('button');
+   cancel.type = 'button';
+   cancel.textContent = item.status === 'due' ? 'Dismiss reminder' : 'Cancel reminder';
+   cancel.addEventListener('click', () => runReminderAction(async () => {
+    await reminderApi({ action: 'cancel', id: item.id });
+    return 'Demo reminder cancelled or dismissed.';
+   }));
+   row.append(cancel);
+  }
+  list.append(row);
+ }
+ const due = items.filter((r) => r.status === 'due' && !reminderNotified.has(r.id));
+ const activeDue = items.filter((r) => r.status === 'due');
+ const alertText = activeDue.length ? 'Demo reminder: ' + activeDue.map((r) => r.message).join('; ') : '';
+ if (document.querySelector('#reminderAlert').textContent !== alertText) document.querySelector('#reminderAlert').textContent = alertText;
+ if (due.length) {
+  due.forEach((r) => reminderNotified.add(r.id));
+  revealPassengerTool({ passengerReminders: true });
+  document.querySelector('#reminderPanel').open = true;
+ }
+ const next = items.filter((r) => r.status === 'pending').sort((a,b) => a.dueAt - b.dueAt)[0];
+ if (next) reminderTimer = setTimeout(() => {
+  if (sessionReady) void runReminderAction(async () => '');
+ }, Math.max(100, next.dueAt - Date.now() + 100));
+}
+async function runReminderAction(action) {
+ if (reminderBusy) return;
+ if (vercelPreview || !sessionReady) {
+  document.querySelector('#reminderStatus').textContent = vercelPreview ? 'Reminders are available in the local demo only.' : 'Start a conversation first.';
+  return;
+ }
+ reminderBusy = true;
+ const generation = reminderGeneration;
+ const buttons = [...document.querySelectorAll('#reminderPanel button, #reminderReviewDialog button')];
+ buttons.forEach((b) => { b.disabled = true; });
+ try {
+  const notice = await action(generation);
+  if (generation !== reminderGeneration) return;
+  const data = await reminderApi({ action: 'list' });
+  if (generation !== reminderGeneration) return;
+  renderReminders(data.reminders);
+  if (notice) document.querySelector('#reminderStatus').textContent = notice;
+ } catch (error) {
+  if (generation === reminderGeneration) document.querySelector('#reminderStatus').textContent = error.message + ' Refresh reminders to retry.';
+ } finally {
+  reminderBusy = false;
+  buttons.forEach((b) => { b.disabled = false; });
+ }
+}
+document.querySelector('#reminderTimeZone').value = Intl.DateTimeFormat().resolvedOptions().timeZone;
+document.querySelector('#reminderReviewButton').addEventListener('click', () => runReminderAction(async (generation) => {
+ const minutes = Number(document.querySelector('#reminderMinutes').value);
+ if (!Number.isInteger(minutes) || minutes < 1 || minutes > 120) throw new Error('Choose 1–120 minutes.');
+ const data = await reminderApi({ action: 'review', kind: document.querySelector('#reminderKind').value, dueAt: Date.now() + minutes * 60_000, timeZone: document.querySelector('#reminderTimeZone').value });
+ if (generation !== reminderGeneration) return;
+ reminderToken = data.draft.token;
+ document.querySelector('#reminderReviewText').textContent = data.draft.message + '\n' + reminderTime(data.draft) + '\nUTC: ' + new Date(data.draft.dueAt).toISOString() + '\n\nIn-app demo only. Closing the page, ending the conversation, or restarting the server prevents delivery. No automatic changes for flight delays.';
+ document.querySelector('#reminderReviewDialog').showModal();
+ return 'Review the message and time, then confirm saving.';
+}));
+document.querySelector('#reminderConfirmButton').addEventListener('click', () => runReminderAction(async (generation) => {
+ await reminderApi({ action: 'save', token: reminderToken, confirmed: true });
+ if (generation !== reminderGeneration) return;
+ reminderToken = null;
+ document.querySelector('#reminderReviewDialog').close();
+ return 'Demo reminder saved. Keep this page and conversation active.';
+}));
+document.querySelector('#reminderEditButton').addEventListener('click', () => {
+ reminderToken = null;
+ document.querySelector('#reminderReviewDialog').close();
+});
+document.querySelector('#reminderRefreshButton').addEventListener('click', () => runReminderAction(async () => 'Showing reminders for this conversation.'));
+
+
+function clearTranslationDemo() {
+ document.querySelector('#translationResult').hidden = true;
+ document.querySelector('#translatedPhrase').textContent = '';
+ document.querySelector('#translationOriginal').textContent = '';
+ document.querySelector('#translationPronunciation').textContent = '';
+ document.querySelector('#translationCopyStatus').textContent = '';
+ document.querySelector('#translatorPanel').open = false;
+}
+function renderTranslation(data) {
+ const result = document.querySelector('#translationResult');
+ result.hidden = !data;
+ document.querySelector('#translationCopyStatus').textContent = '';
+ if (!data) return;
+ document.querySelector('#translationOriginal').textContent = data.english;
+ const phrase = document.querySelector('#translatedPhrase');
+ phrase.textContent = data.text;
+ phrase.lang = data.code;
+ document.querySelector('#translationPronunciation').textContent = 'Approximate pronunciation: ' + data.pronunciation;
+ document.querySelector('#translatorPanel').open = true;
+}
+document.querySelector('#translatePhraseButton').addEventListener('click', () => {
+ if (!sessionReady || chatRequest) return;
+ void sendMessage('Translate "' + document.querySelector('#travelPhrase').value + '"');
+});
+document.querySelector('#translationCopyButton').addEventListener('click', async () => {
+ const text = document.querySelector('#translatedPhrase').textContent;
+ if (!text) return;
+ try {
+  await navigator.clipboard.writeText(text);
+  document.querySelector('#translationCopyStatus').textContent = 'Translation copied.';
+ } catch {
+  document.querySelector('#translationCopyStatus').textContent = 'Copy is unavailable. Select the displayed translation and copy it manually.';
+ }
+});
+
+
+const demoQuestionButtons = [...document.querySelectorAll('[data-demo-question]')];
+for (const button of demoQuestionButtons) {
+ button.addEventListener('click', () => {
+  if (!sessionReady || sendButton.disabled) return;
+  void sendMessage(button.dataset.demoQuestion);
+ });
+}
+const syncDemoQuestionButtons = () => {
+ for (const button of demoQuestionButtons) button.disabled = sendButton.disabled;
+};
+new MutationObserver(syncDemoQuestionButtons).observe(sendButton, { attributes: true, attributeFilter: ['disabled'] });
+syncDemoQuestionButtons();
 
 void startSession();
 if (window.location.protocol !== 'file:') void loadVoiceAvailability();

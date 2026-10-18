@@ -1,3 +1,4 @@
+import { migrateDatabase } from './database-migrations.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -49,22 +50,8 @@ export class UsageLimitError extends Error {
 export function createUsageStore({ dbPath = ':memory:', clock = Date.now, limits = defaultLimits } = {}) {
   if (dbPath !== ':memory:') mkdirSync(dirname(dbPath), { recursive: true });
   const db = new DatabaseSync(dbPath);
-  db.exec(`
-    PRAGMA journal_mode = WAL;
-    PRAGMA secure_delete = ON;
-    CREATE TABLE IF NOT EXISTS usage_events (
-      id TEXT PRIMARY KEY,
-      day TEXT NOT NULL,
-      visitor_hash TEXT NOT NULL,
-      kind TEXT NOT NULL,
-      state TEXT NOT NULL,
-      reserved_tokens INTEGER NOT NULL DEFAULT 0,
-      actual_tokens INTEGER,
-      created_at INTEGER NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS usage_day_kind ON usage_events(day, kind);
-    CREATE INDEX IF NOT EXISTS usage_visitor_day_kind ON usage_events(visitor_hash, day, kind);
-  `);
+  db.exec('PRAGMA secure_delete=ON; PRAGMA journal_mode=WAL;');
+  try { migrateDatabase(db, 'usage', { dbPath }); } catch (error) { db.close(); throw error; }
   const insert = db.prepare(`INSERT INTO usage_events
     (id, day, visitor_hash, kind, state, reserved_tokens, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?)`);

@@ -5,6 +5,7 @@ import { json, sameOrigin } from '../../lib/vercel-shared.mjs';
 export async function POST(request) {
   if (!sameOrigin(request)) return json({ error: 'Request origin is not allowed.' }, 403);
   try {
+    if (!supabaseEnabled()) return json({error:'Server-backed conversation storage is required.'},503);
     if (supabaseEnabled()) {
       const id = sessionIdFrom(request);
       if (id) await deleteStoredSession(id);

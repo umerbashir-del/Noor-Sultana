@@ -1,0 +1,23 @@
+{
+  "usage": [
+    {
+      "version": 1,
+      "name": "baseline",
+      "sql": "CREATE TABLE IF NOT EXISTS usage_events (\n      id TEXT PRIMARY KEY,\n      day TEXT NOT NULL,\n      visitor_hash TEXT NOT NULL,\n      kind TEXT NOT NULL,\n      state TEXT NOT NULL,\n      reserved_tokens INTEGER NOT NULL DEFAULT 0,\n      actual_tokens INTEGER,\n      created_at INTEGER NOT NULL\n    );\n    CREATE INDEX IF NOT EXISTS usage_day_kind ON usage_events(day, kind);\n    CREATE INDEX IF NOT EXISTS usage_visitor_day_kind ON usage_events(visitor_hash, day, kind);"
+    }
+  ],
+  "email": [
+    {
+      "version": 1,
+      "name": "baseline",
+      "sql": "CREATE TABLE IF NOT EXISTS email_verifications (\n      id TEXT PRIMARY KEY, session_id TEXT NOT NULL, email TEXT NOT NULL,\n      code_hash TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,\n      created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, verified_at INTEGER,\n      provider_id TEXT, send_state TEXT NOT NULL\n    );\n    CREATE INDEX IF NOT EXISTS email_verifications_email_time ON email_verifications(email, created_at);\n    CREATE TABLE IF NOT EXISTS email_jobs (\n      id TEXT PRIMARY KEY, verification_id TEXT NOT NULL UNIQUE,\n      email TEXT, subject TEXT, body TEXT, review_hash TEXT,\n      scheduled_at INTEGER NOT NULL, status TEXT NOT NULL,\n      confirmed_at INTEGER NOT NULL, sending_at INTEGER, attempts INTEGER NOT NULL DEFAULT 0,\n      provider_id TEXT, sent_at INTEGER, cancelled_at INTEGER, failed_at INTEGER,\n      delivery_event TEXT, delivery_checked_at INTEGER, failure_reason TEXT\n    );\n    CREATE INDEX IF NOT EXISTS email_jobs_due ON email_jobs(status, scheduled_at);\n    CREATE INDEX IF NOT EXISTS email_jobs_email ON email_jobs(email);\n    CREATE TABLE IF NOT EXISTS email_events (\n      id INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT NOT NULL,\n      event TEXT NOT NULL, at INTEGER NOT NULL, detail TEXT\n    );"
+    }
+  ],
+  "traces": [
+    {
+      "version": 1,
+      "name": "baseline",
+      "sql": "CREATE TABLE IF NOT EXISTS agent_events (seq INTEGER PRIMARY KEY AUTOINCREMENT, trace_id TEXT NOT NULL, at_ms INTEGER NOT NULL, event TEXT NOT NULL, metadata TEXT NOT NULL); CREATE INDEX IF NOT EXISTS agent_events_trace ON agent_events(trace_id);"
+    }
+  ]
+}

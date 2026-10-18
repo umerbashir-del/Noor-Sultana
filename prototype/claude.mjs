@@ -50,7 +50,7 @@ export async function answerWeather({ weather, message, apiKey, model, systemPro
   }
 }
 
-export async function askClaude({ apiKey, model, system, messages, fetchImpl = fetch }) {
+export async function askClaude({ apiKey, model, system, messages, maxOutputTokens = 300, fetchImpl = fetch }) {
   let upstream;
   try {
     upstream = await fetchImpl('https://api.anthropic.com/v1/messages', {
@@ -61,7 +61,7 @@ export async function askClaude({ apiKey, model, system, messages, fetchImpl = f
         'anthropic-version': '2023-06-01',
         'x-api-key': apiKey,
       },
-      body: JSON.stringify({ model, max_tokens: 300, system, messages }),
+      body: JSON.stringify({ model, max_tokens: maxOutputTokens, system, messages }),
     });
   } catch {
     throw new ClaudeUnavailable('I couldn’t reach Claude just now. Please try again.');

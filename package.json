@@ -4,6 +4,13 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build-vercel.mjs",
-    "test:vercel": "node --test api/*.test.mjs"
+    "test:vercel": "node --test api/*.test.mjs",
+    "test:agent": "node --test prototype/agent*.test.mjs prototype/trace-store.test.mjs prototype/token-budget.test.mjs prototype/usage-store.test.mjs",
+    "eval:agent:live": "node scripts/eval-agent.mjs --live",
+    "traces:agent": "node scripts/inspect-agent-traces.mjs",
+    "db:backup": "node scripts/database.mjs backup",
+    "db:verify": "node scripts/database.mjs verify",
+    "db:restore": "node scripts/database.mjs restore",
+    "test:database": "node --test prototype/database*.test.mjs"
   }
 }
