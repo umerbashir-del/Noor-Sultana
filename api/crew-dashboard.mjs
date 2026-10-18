@@ -1,6 +1,7 @@
 import {json,sameOrigin} from '../lib/vercel-shared.mjs';
 import {crewAccessConfigured,validCrewCode,crewAuthorized,crewAccessCookie,clearCrewAccessCookie} from '../lib/crew-dashboard-auth.mjs';
 import {supabaseEnabled,listStoredCrewRequests,updateStoredCrewRequest} from '../lib/supabase-store.mjs';
+import {answerCrewQuestion} from '../lib/crew-assistant.mjs';
 const uuid=value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(value);
 export async function POST(request){
  if(!sameOrigin(request))return json({error:'Request origin is not allowed.'},403);
@@ -14,6 +15,10 @@ export async function POST(request){
  try{
   if(!supabaseEnabled())throw Error('Storage required');
   if(input.action==='list')return json({requests:await listStoredCrewRequests()});
+  if(input.action==='ask'){
+   if(typeof input.question!=='string'||!input.question.trim()||input.question.length>300)return json({error:'Ask a crew question in 300 characters or fewer.'},400);
+   return json(answerCrewQuestion(input.question,await listStoredCrewRequests()));
+  }
   if(input.action==='update'){
    if(!uuid(input.sessionId)||!uuid(input.id)||!['submitted','acknowledged','in_progress'].includes(input.expectedStatus)||!['acknowledged','in_progress','completed'].includes(input.status))return json({error:'Choose a valid request and status.'},400);
    const result=await updateStoredCrewRequest(input);
