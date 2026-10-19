@@ -158,7 +158,8 @@ test('provider 429 returns a wait time and refunds the same voice reservation', 
   assert.equal(releases, 1);
 });
 
-test('short provider throttle retries once without a second voice reservation', async () => {
+test('nine-second provider throttle retries once without a second voice reservation', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
   process.env.NOOR_VOICE_ENABLED = 'true';
   process.env.REPLICATE_API_TOKEN = 'test-only-token';
   const cookie = sessionIdCookie(randomUUID()).split(';')[0];
@@ -174,16 +175,25 @@ test('short provider throttle retries once without a second voice reservation', 
     if (destination.endsWith('/models/resemble-ai/chatterbox-turbo/predictions')) {
       providerCalls += 1;
       return providerCalls === 1
-        ? Response.json({}, { status: 429, headers: { 'retry-after': '1' } })
+        ? Response.json({}, { status: 429, headers: { 'retry-after': '9' } })
         : Response.json({ status: 'succeeded', output: 'https://replicate.delivery/voice.wav' });
     }
     if (destination === 'https://replicate.delivery/voice.wav') return new Response(wav);
     throw new Error(`Unexpected destination: ${destination}`);
   };
-  const response = await POST(request(cookie, 'Welcome aboard.'));
-  assert.equal(response.status, 200);
-  assert.equal(providerCalls, 2);
-  assert.equal(reservations, 1);
+  try {
+    const pending = POST(request(cookie, 'Welcome aboard.'));
+    for (let i = 0; i < 20; i++) await new Promise(setImmediate);
+    assert.equal(providerCalls, 1);
+    t.mock.timers.tick(8999);
+    for (let i = 0; i < 20; i++) await new Promise(setImmediate);
+    assert.equal(providerCalls, 1);
+    t.mock.timers.tick(1);
+    const response = await pending;
+    assert.equal(response.status, 200);
+    assert.equal(providerCalls, 2);
+    assert.equal(reservations, 1);
+  } finally { t.mock.timers.reset(); }
 });
 
 test('interrupting speech cancels the active provider prediction', async () => {

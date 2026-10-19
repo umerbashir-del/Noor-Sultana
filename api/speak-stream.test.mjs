@@ -184,3 +184,47 @@ test('deadline also bounds waiting for an initial429 refund without abandoning i
     assert.equal(releases, 1);
   } finally { refund.resolve(Response.json(true)); t.mock.timers.reset(); }
 });
+
+
+for (const mode of ['success', 'still-busy', 'abort', 'deadline']) test(`seven-second stream throttle: ${mode} preserves bounded retries and one reservation`, async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+  const flush = async () => { for (let i = 0; i < 20; i++) await new Promise(setImmediate); };
+  const aborter = new AbortController();
+  let creates = 0, reservations = 0, releases = 0;
+  globalThis.fetch = async url => {
+    const path = String(url);
+    if (path.endsWith('/rpc/noor_reserve_demo_voice_v2')) { reservations++; return Response.json('ok'); }
+    if (path.endsWith('/rpc/noor_release_demo_voice')) { releases++; return Response.json(true); }
+    if (path.endsWith(createPath)) {
+      creates++;
+      if (creates === 1 && mode === 'deadline') t.mock.timers.tick(49000);
+      if (creates === 1 || mode === 'still-busy') return new Response('', { status: 429, headers: { 'retry-after': '7' } });
+      return Response.json({ status: 'succeeded', output: 'https://replicate.delivery/retry.wav' });
+    }
+    if (path === 'https://replicate.delivery/retry.wav') return new Response(wav);
+    throw new Error('Unexpected URL');
+  };
+  try {
+    const response = await POST(request(`Unique ${mode} throttle fixture.`, aborter.signal));
+    await flush();
+    assert.equal(creates, 1);
+    if (mode === 'abort') aborter.abort();
+    else {
+      t.mock.timers.tick(mode === 'deadline' ? 1000 : 6999); await flush();
+      assert.equal(creates, 1);
+      if (mode !== 'deadline') { t.mock.timers.tick(1); await flush(); }
+    }
+    if (mode === 'abort') { await flush(); assert.equal(await response.text(), ''); }
+    else {
+      const output = await lines(response);
+      if (mode === 'success') {
+        assert.ok(output[0].audio);
+        assert.deepEqual(output.at(-1), { done: true });
+      } else if (mode === 'deadline') assert.match(output.at(-1).error, /took too long/);
+      else assert.match(output.at(-1).error, /7 seconds/);
+    }
+    assert.equal(creates, mode === 'success' || mode === 'still-busy' ? 2 : 1);
+    assert.equal(reservations, 1);
+    assert.equal(releases, mode === 'still-busy' ? 1 : 0);
+  } finally { t.mock.timers.reset(); }
+});

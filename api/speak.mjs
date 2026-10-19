@@ -95,6 +95,7 @@ function available() {
 async function predictionRequest(url, options = {}, signal) {
   const isCreate = url === predictionEndpoint && options.method === 'POST';
   for (let attempt = 0; attempt < 2; attempt += 1) {
+    signal?.throwIfAborted();
     const response = await fetch(url, {
       ...options,
       headers: { authorization: `Bearer ${process.env.REPLICATE_API_TOKEN}`, ...options.headers },
@@ -102,7 +103,7 @@ async function predictionRequest(url, options = {}, signal) {
     });
     if (response.status === 429) {
       const seconds = retryAfterSeconds(response.headers.get('retry-after'));
-      if (isCreate && attempt === 0 && seconds <= 3) {
+      if (isCreate && attempt === 0 && seconds <= 10) {
         await delay(seconds * 1000, undefined, { signal });
         continue;
       }
