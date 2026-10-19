@@ -23,5 +23,5 @@ scripts/check-hosted-actions.sql
 
 scripts/check-crew-dashboard.sql
 
-# SDK/model assets are authorized for local use only.
+# Historical authoring exports stay private; the reviewed live2d/noor-v6 app bundle is included.
 prototype/live2d-local

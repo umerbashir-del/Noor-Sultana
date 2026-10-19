@@ -5,7 +5,8 @@ const directives = policy => new Map(policy.split(';').map(value=>value.trim().s
 function assertMediaOnly(policy) {
   const parsed=directives(policy);
   assert.deepEqual(parsed.get('media-src'),["'self'",'blob:']);
-  for(const name of ['default-src','script-src','style-src','connect-src']) assert.deepEqual(parsed.get(name),["'self'"]);
+  for(const name of ['default-src','style-src','connect-src']) assert.deepEqual(parsed.get(name),["'self'"]);
+  assert.deepEqual(parsed.get('script-src'),["'self'","'wasm-unsafe-eval'"]);
   assert.deepEqual(parsed.get('object-src'),["'none'"]);
 }
 test('local app allows generated Blob audio without opening script or network sources',async()=>{
@@ -23,5 +24,11 @@ test('built flight demo receives the same bounded media permission',async()=>{
   for(const path of ['/','/index.html','/crew-dashboard.html']){
     const policy=config.headers.find(row=>row.source===path).headers.find(header=>header.key==='Content-Security-Policy').value;
     assert.equal(directives(policy).has('media-src'),false,'Unrelated page policy remains unchanged');
+    assert.deepEqual(directives(policy).get('script-src'),["'self'"]);
   }
+});
+
+test('hosted transcription has bounded execution and cancellation enabled',async()=>{
+  const config=JSON.parse(await readFile(new URL('../vercel.json',import.meta.url),'utf8'));
+  assert.deepEqual(config.functions['api/transcribe.mjs'],{supportsCancellation:true,maxDuration:60});
 });

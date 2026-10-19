@@ -4,7 +4,7 @@ This is a small prototype with offline launch safeguards. The home page offers f
 
 Passenger shortcuts include **Boarding time**, **Baggage guidance**, **Weather availability**, and **Arrival note**. The boarding time is fictional, baggage guidance comes from a draft knowledge page, and the fixed arrival note is general demo guidance. These shortcuts appear alongside Tokyo weather, weather elsewhere, and the arrival email draft.
 
-## Local Live2D avatar
+## Live2D avatar
 
 Open `/flight-demo.html` on the loopback server to use the native V6 rig. It adds small head tilt, independent brows, horizontal gaze, restrained body sway and a modest arm gesture to V5's two-eye blink and single mouth-open shape. The canvas keeps the existing avatar frame. The PNG remains visible while loading and returns if assets or WebGL fail. No browser vertex correction is applied.
 
@@ -12,11 +12,11 @@ Open `/flight-demo.html` on the loopback server to use the native V6 rig. It add
 
 During reply preparation the app shows the retained hand-to-chin thinking PNG. Actual speech switches back to the native model, with short head tilts and left-arm gestures followed by holds and rests, within verified parameter bounds. Continuous body rocking is disabled. The thinking image is static; a rigged hand-to-chin pose and independent right-arm gesture are not built. Mouth movement is still audio-volume driven, not phoneme matched. A separate V7 authoring copy and local Rhubarb timing proof exist outside the repo; no shaped-mouth V7 export or cue playback is enabled yet.
 
-The asset inventory, hashes and bounded verification are in `live2d-local/manifest.json`. The V6 pose gate requires the loaded MOC's SHA256, real native keyforms and measured finite vertex movement. Parameter names alone do not enable it. Pose failures disable only optional poses. V6 passed 1,728 combined native geometry checks and a six-pose WebGL review; its neutral rendered pixels match V5. The source was saved, closed, reopened and re-exported with matching runtime hashes. Detailed local evidence stays in the outer workbench. When replacing an export, update its versioned path, inventory, hashes and verification before restarting the server.
+The asset inventory, hashes and bounded verification are in `live2d/noor-v6/manifest.json`. The V6 pose gate requires the loaded MOC's SHA256, real native keyforms and measured finite vertex movement. Parameter names alone do not enable it. Pose failures disable only optional poses. V6 passed 1,728 combined native geometry checks and a six-pose WebGL review; its neutral rendered pixels match V5. The source was saved, closed, reopened and re-exported with matching runtime hashes. Detailed local evidence stays in the outer workbench. When replacing an export, update its versioned path, inventory, hashes and verification before restarting the server.
 
 Current limits: head roll rather than a 3D head turn; horizontal gaze only; one mouth-open shape rather than phoneme shapes; a small gesture using the hanging-arm art. A hand-to-chin pose needs additional hand and sleeve artwork. State mapping and playback tests do not establish microphone transcription quality or streaming speech.
 
-Cubism SDK/Core, framework, shaders, model and retained license files are for the user's accepted **local-use scope only**. The server serves only inventory-listed assets in nonproduction mode on loopback, requires a loopback Host header and rejects forwarding headers for those requests. Public builds, Vercel uploads and Docker contexts exclude `live2d-local/`; hosted previews retain the PNG. Publishing or paid use requires a separate license/authorization review.
+The user authorized public Noor application delivery on 2026-10-19. `live2d/noor-v6/` contains the fixed, versioned application runtime, model, Framework, shaders and required license notices. Local and hosted pages use the same verified V6 model. Builds validate hashes, model references and module imports and fail on missing assets. Editable rigs, the raw SDK and historical `live2d-local/` exports remain private/protected; the public application is subject to the bundled Live2D terms.
 
 ## Passenger knowledge
 
