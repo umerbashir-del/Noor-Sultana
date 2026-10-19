@@ -21,7 +21,7 @@ test('signed crew cookie carries a random, expiring session identity',()=>{
  const request=new Request('https://noor.example/api/crew-dashboard',{headers:{cookie}});
  assert.equal(crewSessionIdFrom(request,1001),id);assert.equal(crewAuthorized(request,1001),true);
  assert.equal(crewSessionIdFrom(request,7201000),null);
- const changed=new Request(request.url,{headers:{cookie:cookie.replace(/.$/,'x')}});
+ const changed=new Request(request.url,{headers:{cookie:cookie.replace(/.$/,cookie.endsWith('x')?'y':'x')}});
  assert.equal(crewAuthorized(changed,1001),false);
 });
 test('crew reservations settle actual usage and count against the shared global ledger',async()=>{
