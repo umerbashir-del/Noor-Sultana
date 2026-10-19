@@ -12,10 +12,20 @@ The `Documents/` folder contains the Noor assistant PRD summary and a link to th
 
 ## Prototype
 
-The passenger demo uses Claude to answer questions about a fictional Cloudline Air flight from New York to Tokyo. A separate read-only Open-Meteo lookup supplies real public weather near JFK and Tokyo Haneda. Noor can also schedule a fixed arrival email to a verified passenger address when Resend is configured. Noor switches between welcoming and thoughtful poses in an airplane cabin scene.
+The passenger demo uses Claude to answer questions about a fictional Cloudline Air flight from New York to Tokyo. A separate read-only Open-Meteo lookup supplies real public weather near JFK and Tokyo Haneda. Noor can also schedule a fixed arrival email to a verified passenger address when Resend is configured. The local demo now renders the native Live2D blink rig in the existing cabin scene. Static welcoming and thoughtful poses remain the loading/error and hosted-preview fallback.
 
 Follow the [setup instructions](prototype/README.md) to add your Anthropic key and start the local server. Open `http://127.0.0.1:4173` to chat; opening the HTML file directly does not connect to the server. The demo does not access live airline services, and its flight details are fictional.
+
+## Local animated avatar
+
+The loopback passenger demo at `http://127.0.0.1:4173/flight-demo.html` loads versioned assets from `prototype/live2d-local/`. `prototype/avatar.js` controls the native V6 rig: blinking, one mouth-open shape, small head tilt, brows, horizontal gaze, restrained body sway and a modest arm gesture. Conversation states ease between verified native poses. The speech controller measures Noor's output audio and resets the mouth when playback stops. Reduced-motion settings neutralize optional poses and automatic blinking while retaining speech-mouth movement. The PNG returns if assets or WebGL fail.
+
+The downloaded Cubism SDK is authorized for **local use only**. The local server requires a nonproduction loopback bind, a loopback Host header and no forwarding headers for these files. Preview builds, Vercel uploads and Docker contexts exclude them. This work does not authorize publication or paid use. See [the prototype guide](prototype/README.md#local-live2d-avatar) for the current limits.
 
 ## Launch preparation
 
 The prototype now includes public-origin and secure-cookie settings, per-browser and overall daily usage limits, structured request and Claude token logs, a health check, and retention cleanup. See [the prototype guide](prototype/README.md) for settings and privacy limits. The root [Dockerfile](Dockerfile) prepares a Linux server image; the [Supabase migration](supabase/migrations/20261011_noor_foundation.sql) and [daily cleanup job](supabase/cron.sql) are ready for a future project connection. The live app still uses one local SQLite-backed server until that connection is built and tested.
+
+## Local artwork workspace
+
+The enclosing local Noor-Sultana folder holds artwork, planning and authoring tools. The user accepted `../artwork/working/noor-likeness-v10b-materials.kra` for animation. The local native V6 rig has verified two-eye blinking, a single mouth-open shape, head tilts, brows, horizontal gaze and a modest left-arm gesture. Speaking uses timed gestures and holds; thinking uses the retained static hand-to-chin drawing. Phoneme mouth shapes and larger arm poses remain unfinished. The native SDK/model assets remain local-only and are excluded from Git and hosted builds. See the local [project plan](../planning/PROJECT-PLAN.md), [workspace instructions](../AGENTS.md), and [file inventory](../planning/FILES.md). These local workspace links are not part of the remote repository.
