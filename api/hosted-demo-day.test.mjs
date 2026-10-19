@@ -22,6 +22,17 @@ test('passenger and crew model caps lift for the day and resume after it',()=>{
  assert.ok(Object.values(crewClaudeLimits(env,demoDayStart)).every(value=>value===practicalUnlimited));
  assert.equal(hostedClaudeLimits(env,demoDayEnd).globalTokens,300000);
  assert.equal(crewClaudeLimits(env,demoDayEnd).crewTokens,60000);
+ assert.deepEqual(hostedClaudeLimits(env,demoDayEnd),{
+  visitorRequests:100,globalRequests:500,visitorTokens:30000,globalTokens:300000,
+ });
+});
+
+test('session allowance migration changes only question and voice counts',async()=>{
+ const historical=await readFile(new URL('../supabase/migrations/20261019_noor_hosted_demo_day_allowance.sql',import.meta.url),'utf8');
+ const migration=await readFile(new URL('../supabase/migrations/20261020_noor_session_allowances.sql',import.meta.url),'utf8');
+ const functions=text=>text.slice(text.indexOf('create or replace function public.noor_reserve_demo_call'));
+ const expected=functions(historical).replaceAll('calls<30','calls<100').replaceAll('calls>=30','calls>=100').replaceAll('voice_calls>=10','voice_calls>=50');
+ assert.equal(functions(migration),expected);
 });
 
 test('SQL keeps counters and usage while limiting the exception to the same day',async()=>{

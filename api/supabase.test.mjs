@@ -14,9 +14,9 @@ test('hosted endpoints fail closed without server storage and reject legacy cook
 });
 test('server counters and memory survive old cookie replay; ending a session revokes it without erasing usage',async()=>{
  const f=setup(),cookie=cookies(await start(request('/api/session')));const session=[...f.backend.sessions.values()][0];
- for(let i=0;i<30;i++){const result=await chat(request('/api/chat',cookie,'Hello Noor'));assert.equal(result.status,200);}
- assert.equal(session.calls,30);assert.equal((await chat(request('/api/chat',cookie,'Hello Noor'))).status,429);assert.equal(f.calls(),30);assert.equal(f.backend.ledger.length,30);
- assert.equal((await end(request('/api/session/end',cookie))).status,200);assert.equal((await chat(request('/api/chat',cookie,'Hello Noor'))).status,401);assert.equal(f.backend.ledger.length,30);
+ for(let i=0;i<100;i++){const result=await chat(request('/api/chat',cookie,'Hello Noor'));assert.equal(result.status,200);}
+ assert.equal(session.calls,100);assert.equal((await chat(request('/api/chat',cookie,'Hello Noor'))).status,429);assert.equal(f.calls(),100);assert.equal(f.backend.ledger.length,100);
+ assert.equal((await end(request('/api/session/end',cookie))).status,200);assert.equal((await chat(request('/api/chat',cookie,'Hello Noor'))).status,401);assert.equal(f.backend.ledger.length,100);
 });
 test('server-stored memory wins over an old memory cookie',async()=>{
  const f=setup(),cookie=cookies(await start(request('/api/session')));const row=[...f.backend.sessions.values()][0];row.memory={version:1,topics:[],flightId:'CL204',preferences:{language:'spanish'}};
