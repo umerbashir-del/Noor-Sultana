@@ -420,7 +420,7 @@ async function playStreamedSpeech(response, generation, controller) {
     const entry = JSON.parse(line);
     if (entry.error) throw new Error(entry.error);
     if (entry.done === true) { if (!count || done) throw new Error('Invalid voice stream.'); done = true; trace('terminal_done'); return; }
-    if (done || count >= 3 || entry.index !== count || typeof entry.audio !== 'string'
+    if (done || count >= 5 || entry.index !== count || typeof entry.audio !== 'string'
       || entry.audio.length > 6_700_000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(entry.audio)) throw new Error('Invalid voice segment.');
     const raw = atob(entry.audio);
     const audio = new Blob([Uint8Array.from(raw, value => value.charCodeAt(0))], { type: 'audio/wav' });

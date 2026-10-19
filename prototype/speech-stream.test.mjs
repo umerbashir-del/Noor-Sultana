@@ -64,3 +64,21 @@ test('transport failure after terminal done still fails before EOF and stops que
  assert.deepEqual(f.events.map(event=>event.kind),['terminal_done','error','abort']);
  assert.equal(f.c.voiceRequest,undefined);assert.notEqual(f.c.voiceStatus.textContent,'Voice on');
 });
+
+test('five local clauses play in order and return to idle after the final clause',async()=>{
+ const f=fixture(),s=stream();f.c.fetch=async()=>s.response;const task=f.c.speakReply('five local clauses');
+ for(let index=0;index<5;index++)s.line(segment(index));s.line({done:true});s.close();await drain();
+ for(let index=0;index<5;index++){assert.deepEqual(f.starts,Array.from({length:index+1},(_,i)=>i+1));f.nodes[index].onended();await drain();}
+ await task;assert.equal(f.c.avatarState,'idle');assert.equal(f.c.voiceStatus.textContent,'Voice on');
+});
+test('a sixth streamed segment is rejected and all queued playback is stopped',async()=>{
+ const f=fixture(),s=stream();f.c.fetch=async()=>s.response;const task=f.c.speakReply('too many segments');
+ for(let index=0;index<5;index++)s.line(segment(index));await drain();s.line(segment(5));s.close();await task;
+ assert.equal(f.c.avatarState,'error');assert.deepEqual(f.starts,[1]);assert.equal(f.nodes[0].stopped,true);
+ assert.equal(f.events.some(event=>event.kind==='playback_complete'),false);
+});
+test('Stop after all five clauses are queued discards the four remaining clauses',async()=>{
+ const f=fixture(),s=stream();f.c.fetch=async()=>s.response;const task=f.c.speakReply('stop five clauses');
+ for(let index=0;index<5;index++)s.line(segment(index));s.line({done:true});s.close();await drain();
+ f.c.stopSpeech();await task;assert.deepEqual(f.starts,[1]);assert.equal(f.nodes[0].stopped,true);assert.equal(f.c.avatarState,'idle');
+});

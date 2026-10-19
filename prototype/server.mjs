@@ -412,7 +412,7 @@ async function handleSpeak(request, response) {
       identity = info.identity;
       if (typeof identity !== 'string' || !identity.startsWith('chatterbox-tts@')) throw new Error('Voice identity unavailable');
     }
-    const segments = streaming ? segmentSpeech(text.trim()) : [text.trim()];
+    const segments = streaming ? segmentSpeech(text.trim(), { local: true }) : [text.trim()];
     for (const [index, segment] of segments.entries()) {
       if (!current()) throw new VoiceJobCancelled();
       let audio = streaming ? speechCache.get(identity, segment) : null;
