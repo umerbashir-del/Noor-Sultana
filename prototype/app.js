@@ -58,6 +58,22 @@ const emailReviewBody = document.querySelector('#emailReviewBody');
 const confirmScheduleButton = document.querySelector('#confirmScheduleButton');
 const editEmailAddressButton = document.querySelector('#editEmailAddressButton');
 const closeReviewButton = document.querySelector('#closeReviewButton');
+const backgroundSelect = document.querySelector('#backgroundSelect');
+const noorScene = document.querySelector('#noorScene');
+const sceneLabels = { cabin: 'Airplane cabin scene', tokyo: 'Tokyo destination scene', paris: 'Paris destination scene', dubai: 'Dubai destination scene', rome: 'Rome destination scene' };
+const backgroundPreferenceKey = 'noor.background';
+function applyBackground(background) {
+  if (!Object.hasOwn(sceneLabels, background) || !noorScene || !backgroundSelect) return false;
+  noorScene.dataset.background = background;
+  noorScene.setAttribute('aria-label', sceneLabels[background]);
+  backgroundSelect.value = background;
+  return true;
+}
+try { applyBackground(localStorage.getItem(backgroundPreferenceKey)); } catch { /* Storage can be disabled. */ }
+backgroundSelect?.addEventListener('change', () => {
+  if (!applyBackground(backgroundSelect.value)) return;
+  try { localStorage.setItem(backgroundPreferenceKey, backgroundSelect.value); } catch { /* Keep switching usable without storage. */ }
+});
 const noor = document.querySelector('#noorWrap');
 const flightCard = document.querySelector('#flightCard');
 const flightInfoButton = document.querySelector('#flightInfoButton');

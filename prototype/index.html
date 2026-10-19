@@ -15,7 +15,16 @@
         <button class="info-button" id="flightInfoButton" type="button" aria-expanded="false" aria-controls="flightCard">Flight details</button>
       </header>
 
-      <section class="cabin" aria-label="Airplane cabin scene">
+      <section class="cabin" id="noorScene" data-background="cabin" aria-label="Airplane cabin scene">
+        <label class="scene-controls" for="backgroundSelect">Background
+          <select id="backgroundSelect">
+            <option value="cabin">Cabin</option>
+            <option value="tokyo">Tokyo</option>
+            <option value="paris">Paris</option>
+            <option value="dubai">Dubai</option>
+            <option value="rome">Rome</option>
+          </select>
+        </label>
         <div class="scene-shade" aria-hidden="true"></div>
 
         <div class="scene-caption"><p>Welcome aboard</p><h1>Your in-flight guide.</h1><span>Meet Noor · Noor International Airlines</span></div>
