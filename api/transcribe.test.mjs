@@ -81,7 +81,13 @@ test('Stop while storage reservation is pending never starts a paid provider cal
   assert.equal(f.backend.ledger[0].state, 'uncertain');
 });
 
-test('transcription stays capped during unlimited hosted presentation day and honors stricter configured limits', () => {
-  const limits = hostedTranscriptionLimits({ VERCEL_ENV: 'production', NOOR_DAILY_CLAUDE_GLOBAL_TOKENS: '2147483647', NOOR_DAILY_CLAUDE_VISITOR_REQUESTS: '2' });
-  assert.deepEqual(limits, { visitorRequests: 2, globalRequests: 500, visitorTokens: 30000, globalTokens: 300000 });
+test('transcription follows the approved deployed presentation-day policy and restores normal configured limits', () => {
+  const env = { VERCEL_ENV: 'production', NOOR_DAILY_CLAUDE_VISITOR_REQUESTS: '2', NOOR_DAILY_CLAUDE_GLOBAL_TOKENS: '20000' };
+  const normal = { visitorRequests: 2, globalRequests: 500, visitorTokens: 30000, globalTokens: 20000 };
+  assert.deepEqual(hostedTranscriptionLimits(env, Date.parse('2026-10-19T03:59:59Z')), normal);
+  assert.deepEqual(hostedTranscriptionLimits(env, Date.parse('2026-10-19T04:00:00Z')), {
+    visitorRequests: 2147483647, globalRequests: 2147483647, visitorTokens: 2147483647, globalTokens: 2147483647,
+  });
+  assert.deepEqual(hostedTranscriptionLimits(env, Date.parse('2026-10-20T04:00:00Z')), normal);
+  assert.deepEqual(hostedTranscriptionLimits({ ...env, VERCEL_ENV: 'preview' }, Date.parse('2026-10-19T12:00:00Z')), normal);
 });

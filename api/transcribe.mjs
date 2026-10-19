@@ -8,13 +8,12 @@ import { json, sameOrigin } from '../lib/vercel-shared.mjs';
 const version = '8099696689d249cf8b122d833c36ac3f75505c666a395ca40ef26f68e7d3d16e';
 const endpoint = 'https://api.replicate.com/v1/predictions';
 const maxBytes = 900000;
-export function hostedTranscriptionLimits(env = process.env) {
-  // Read configured limits outside the temporary presentation-day override.
-  // New paid ASR calls keep their reviewed ceiling even when chat is unlimited.
-  const configured = hostedClaudeLimits(env, 0);
-  const caps = { visitorRequests: 30, globalRequests: 500, visitorTokens: 30000, globalTokens: 300000 };
-  return Object.fromEntries(Object.entries(caps).map(([key, cap]) => [key, Math.min(cap, configured[key])]));
+export function hostedTranscriptionLimits(env = process.env, now = Date.now()) {
+  // ASR shares the existing deployed model-call policy, including the approved
+  // presentation-day allowance. Normal configured limits resume automatically.
+  return hostedClaudeLimits(env, now);
 }
+
 function available() {
   try { return Boolean(process.env.REPLICATE_API_TOKEN && supabaseEnabled()); }
   catch { return false; }
