@@ -167,11 +167,12 @@
           </form>
           <p class="transcript-review" id="transcriptReview" hidden>Review the recognized words above. Edit them if needed, then press <strong>Send</strong> for Noor to answer.</p>
           <div class="mic-controls" aria-label="Voice conversation controls">
-            <button class="mic-button" id="talkButton" type="button" disabled>🎙 Talk</button>
+            <button class="mic-button" id="talkButton" type="button" aria-describedby="speechInputNotice" disabled>🎙 Talk</button>
             <button class="mic-button" id="doneButton" type="button" disabled>Done</button>
             <button class="mic-button stop-button" id="stopButton" type="button">Stop</button>
             <span id="micStatus" role="status">Press Talk to ask Noor a question.</span>
           </div>
+          <p class="demo-prompt-hint" id="speechInputNotice" hidden>Talk records up to 30 seconds. When browser speech recognition is unavailable, your recording is sent to Replicate for transcription. Review and edit the words before pressing Send. Stop cancels and discards the recording.</p>
           <details class="conversation-settings"><summary>Voice &amp; conversation settings</summary>
           <div class="session-controls">
             <button class="session-button" id="endConversationButton" type="button" disabled>End conversation</button>
@@ -191,6 +192,7 @@
             <button class="voice-button" id="playRecordingButton" type="button" hidden>▶ Check recording</button>
           </div>
           </details>
+          <p class="demo-note">Noor uses Live2D Cubism. <a href="live2d/noor-v6/licenses/DISTRIBUTION-NOTICE.md">Runtime terms and notices</a> apply to the bundled animation components.</p>
           <p class="demo-note">For urgent help, contact cabin crew.</p>
           </div>
         </section>

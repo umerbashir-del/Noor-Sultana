@@ -91,6 +91,7 @@ const playRecordingButton = document.querySelector('#playRecordingButton');
 const transcriptReview = document.querySelector('#transcriptReview');
 const vercelPreview = document.documentElement.dataset.vercelPreview === 'true';
 const BrowserSpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+let hostedTranscriptionAvailable = false;
 
 if (vercelPreview) {
   arrivalEmailButton.hidden = true;
@@ -99,8 +100,18 @@ if (vercelPreview) {
   voiceToggle.disabled = true;
   voiceStatus.textContent = 'Checking Chatterbox voice…';
   if (!BrowserSpeechRecognition) {
-    talkButton.closest('.mic-controls').hidden = true;
-    micStatus.textContent = 'Microphone questions need a browser with speech recognition. You can still type.';
+    const notice = document.querySelector('#speechInputNotice');
+    if (notice) notice.hidden = false;
+    micStatus.textContent = 'Checking microphone transcription…';
+    void fetch('/api/transcribe').then(async (response) => {
+      const data = await response.json();
+      hostedTranscriptionAvailable = response.ok && data.available === true;
+    }).catch(() => {}).finally(() => {
+      talkButton.disabled = !canTalk();
+      micStatus.textContent = hostedTranscriptionAvailable && navigator.mediaDevices?.getUserMedia && window.MediaRecorder
+        ? 'Press Talk to record. Audio is sent to Replicate for transcription; review the words before Send.'
+        : 'Microphone transcription is unavailable. You can still type your question.';
+    });
   }
 }
 
@@ -251,11 +262,12 @@ async function checkMicrophone() {
     if (sequence !== micCheckSequence) return;
     const preferred = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
     const mimeType = preferred.find((type) => MediaRecorder.isTypeSupported(type));
-    const activeRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    const activeRecorder = new MediaRecorder(stream, { ...(mimeType ? { mimeType } : {}), audioBitsPerSecond: 128000 });
     micCheckRecorder = activeRecorder;
     const chunks = [];
     activeRecorder.addEventListener('dataavailable', (event) => {
       if (event.data.size) chunks.push(event.data);
+      if (vercelPreview && chunks.reduce((sum, part) => sum + part.size, 0) > 900000) finishRecording(false);
     });
     activeRecorder.addEventListener('stop', () => {
       stream.getTracks().forEach((track) => track.stop());
@@ -612,7 +624,8 @@ function scheduleSessionEnd() {
 }
 
 function canTalk() {
-  return sessionReady && (!vercelPreview || Boolean(BrowserSpeechRecognition));
+  return sessionReady && (!vercelPreview || Boolean(BrowserSpeechRecognition)
+    || (hostedTranscriptionAvailable && Boolean(navigator.mediaDevices?.getUserMedia && window.MediaRecorder)));
 }
 
 async function startSession(successMessage = 'Conversation ready. End it to clear this screen.') {
@@ -1155,10 +1168,16 @@ async function sendMessage(message) {
 async function transcribeForReview(blob) {
   setAvatarState('thoughtful');
   keepRecordingPreview(blob);
+  if (vercelPreview && blob.size > 900000) {
+    setAvatarState('idle');
+    micStatus.textContent = 'Recording is too large. Record a shorter question, or type it.';
+    talkButton.disabled = !canTalk();
+    return;
+  }
   if (blob.size < 1000) {
     setAvatarState('idle');
     micStatus.textContent = 'Recording was too short. Try again, or use Check recording to hear what the microphone captured.';
-    talkButton.disabled = !sessionReady;
+    talkButton.disabled = !canTalk();
     return;
   }
   const controller = new AbortController();
@@ -1174,7 +1193,7 @@ async function transcribeForReview(blob) {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Could not transcribe the recording.');
     if (transcribeRequest !== controller) return;
-    talkButton.disabled = !sessionReady;
+    talkButton.disabled = !canTalk();
     const transcript = typeof data.text === 'string' ? data.text.trim() : '';
     if (!transcript) {
       setAvatarState('idle');
@@ -1183,11 +1202,12 @@ async function transcribeForReview(blob) {
     }
     reviewTranscript(transcript);
   } catch (error) {
+    if (transcribeRequest !== controller) return;
     if (error.name !== 'AbortError') {
       if (transcribeRequest === controller) setAvatarState('error');
       micStatus.textContent = `${error.message || 'Could not transcribe.'} Use Check recording; if it is silent, choose another microphone.`;
     }
-    talkButton.disabled = !sessionReady;
+    talkButton.disabled = !canTalk();
   } finally {
     if (transcribeRequest === controller) transcribeRequest = undefined;
   }
@@ -1283,7 +1303,7 @@ function startBrowserRecognition() {
 async function startRecording() {
   if (!sessionReady || recorder?.state === 'recording' || talkButton.disabled) return;
   stopMicCheck();
-  if (vercelPreview) return startBrowserRecognition();
+  if (vercelPreview && BrowserSpeechRecognition) return startBrowserRecognition();
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
     micStatus.textContent = 'This browser cannot record your microphone. You can still type a question.';
     return;
@@ -1294,6 +1314,7 @@ async function startRecording() {
   if (voiceAvailable && !voiceEnabled) setVoiceEnabled(true);
   const session = ++micSequence;
   talkButton.disabled = true;
+  sendButton.disabled = true;
   micStatus.textContent = 'Requesting microphone access…';
   try {
     const deviceId = micDeviceSelect.value;
@@ -1310,12 +1331,13 @@ async function startRecording() {
     void listMicrophones(stream);
     const preferred = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
     const mimeType = preferred.find((type) => MediaRecorder.isTypeSupported(type));
-    const activeRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    const activeRecorder = new MediaRecorder(stream, { ...(mimeType ? { mimeType } : {}), audioBitsPerSecond: 128000 });
     recorder = activeRecorder;
     const chunks = [];
     discardRecording = false;
     activeRecorder.addEventListener('dataavailable', (event) => {
       if (event.data.size) chunks.push(event.data);
+      if (vercelPreview && chunks.reduce((sum, part) => sum + part.size, 0) > 900000) finishRecording(false);
     });
     activeRecorder.addEventListener('stop', () => {
       const blob = new Blob(chunks, { type: activeRecorder.mimeType || mimeType || 'audio/webm' });
@@ -1324,7 +1346,8 @@ async function startRecording() {
       micDeviceSelect.disabled = false;
       if (recorder === activeRecorder) recorder = undefined;
       if (session !== micSequence) return;
-      if (discardRecording) talkButton.disabled = !sessionReady;
+      sendButton.disabled = !sessionReady;
+      if (discardRecording) talkButton.disabled = !canTalk();
       else void transcribeForReview(blob);
     }, { once: true });
     activeRecorder.start(250);
@@ -1341,8 +1364,9 @@ async function startRecording() {
     micStream = undefined;
     micDeviceSelect.disabled = false;
     recorder = undefined;
-    talkButton.disabled = !sessionReady;
+    talkButton.disabled = !canTalk();
     doneButton.disabled = true;
+    sendButton.disabled = !sessionReady;
     setAvatarState('error');
     micStatus.textContent = 'Microphone access failed. Check browser permission, or type your question.';
   }
@@ -1364,8 +1388,8 @@ stopButton.addEventListener('click', () => {
   responseText.textContent = 'Stopped. Ask another question when you’re ready.';
   sourceLine.textContent = 'Stopped';
   voiceStatus.textContent = voiceEnabled ? 'Voice on' : 'Voice off';
-  micStatus.textContent = 'Stopped. Press Talk to ask another question.';
-  talkButton.disabled = !sessionReady;
+  micStatus.textContent = canTalk() ? 'Stopped. Press Talk to ask another question.' : 'Stopped. Type another question when you’re ready.';
+  talkButton.disabled = !canTalk();
   setPose('welcome');
 });
 
