@@ -8,6 +8,17 @@ import { json, sameOrigin } from '../lib/vercel-shared.mjs';
 const version = '8099696689d249cf8b122d833c36ac3f75505c666a395ca40ef26f68e7d3d16e';
 const endpoint = 'https://api.replicate.com/v1/predictions';
 const maxBytes = 900000;
+
+class TranscriptionProviderResponseError extends Error {
+  constructor(response) {
+    super('Transcription provider request failed');
+    this.status = response.status;
+    const header = response.headers.get('retry-after');
+    const numeric = Number(header);
+    const seconds = header && Number.isFinite(numeric) ? numeric : (Date.parse(header) - Date.now()) / 1000;
+    this.retryAfterSeconds = Number.isFinite(seconds) ? Math.max(1, Math.min(300, Math.ceil(seconds))) : 30;
+  }
+}
 export function hostedTranscriptionLimits(env = process.env, now = Date.now()) {
   // ASR shares the existing deployed model-call policy, including the approved
   // presentation-day allowance. Normal configured limits resume automatically.
@@ -74,7 +85,7 @@ export async function POST(request) {
       ...options, signal: activeSignal,
       headers: { authorization: `Bearer ${process.env.REPLICATE_API_TOKEN}`, 'content-type': 'application/json', ...options.headers },
     });
-    if (!response.ok) throw new Error('provider');
+    if (!response.ok) throw new TranscriptionProviderResponseError(response);
     return response.json();
   }
   try {
@@ -100,8 +111,17 @@ export async function POST(request) {
     if (await settleStoredModelCall(id, reservation.id, null, 'done') !== true) throw new Error('settlement');
     complete = true;
     return json({ text: text.trim() });
-  } catch {
-    return json({ error: signal.aborted ? 'Transcription stopped or timed out. Please try again.' : 'Could not transcribe the recording. Please try again or type your question.' }, signal.aborted ? 504 : 503);
+  } catch (error) {
+    if (signal.aborted) return json({ error: 'Transcription stopped or timed out. Please try again.' }, 504);
+    if (error instanceof TranscriptionProviderResponseError) {
+      // Record only the HTTP status. Provider bodies can contain private details.
+      console.warn('[Transcription] provider request failed with HTTP status', error.status);
+      if (error.status === 429) {
+        return json({ error: `Transcription is temporarily busy. Please try again in about ${error.retryAfterSeconds} seconds.` },
+          429, { 'retry-after': String(error.retryAfterSeconds) });
+      }
+    }
+    return json({ error: 'Could not transcribe the recording. Please try again or type your question.' }, 503);
   } finally {
     if (!complete) {
       if (predictionId) {

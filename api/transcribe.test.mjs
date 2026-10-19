@@ -91,3 +91,70 @@ test('transcription follows the approved deployed presentation-day policy and re
   assert.deepEqual(hostedTranscriptionLimits(env, Date.parse('2026-10-20T04:00:00Z')), normal);
   assert.deepEqual(hostedTranscriptionLimits({ ...env, VERCEL_ENV: 'preview' }, Date.parse('2026-10-19T12:00:00Z')), normal);
 });
+
+
+test('provider creation 429 returns safe retry guidance without retrying or refunding quota', async () => {
+  const f = await fixture(async () => new Response('private provider details', { status: 429, headers: { 'retry-after': '12' } }));
+  const response = await POST(request(f.cookie));
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get('retry-after'), '12');
+  assert.match((await response.json()).error, /temporarily busy.*12 seconds/);
+  assert.equal(f.calls(), 1);
+  assert.equal(f.backend.ledger.length, 1);
+  assert.equal(f.backend.ledger[0].state, 'uncertain');
+  assert.equal(f.backend.ledger[0].reserved, 3000);
+  assert.equal(f.backend.ledger[0].actual, null);
+});
+
+test('provider Retry-After is bounded and sanitized for missing, invalid, negative and excessive values', async () => {
+  for (const [header, expected] of [[undefined, '30'], ['private provider detail', '30'], ['-5', '1'], ['999999', '300']]) {
+    const f = await fixture(async () => new Response('secret', { status: 429, headers: header === undefined ? {} : { 'retry-after': header } }));
+    const response = await POST(request(f.cookie));
+    assert.equal(response.status, 429);
+    assert.equal(response.headers.get('retry-after'), expected);
+    assert.doesNotMatch(await response.text(), /private provider detail|secret/);
+    assert.equal(f.calls(), 1);
+  }
+  const f = await fixture(async () => new Response(null, { status: 429, headers: { 'retry-after': new Date(Date.now() + 60000).toUTCString() } }));
+  const response = await POST(request(f.cookie));
+  assert.ok(Number(response.headers.get('retry-after')) >= 59);
+  assert.ok(Number(response.headers.get('retry-after')) <= 60);
+});
+
+test('provider 5xx remains a sanitized service failure, rather than a quota or busy claim', async () => {
+  const f = await fixture(async () => new Response('private upstream diagnosis', { status: 503, headers: { 'retry-after': '20' } }));
+  const response = await POST(request(f.cookie));
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get('retry-after'), null);
+  assert.doesNotMatch(await response.text(), /private upstream|temporarily busy|usage limit/);
+  assert.equal(f.calls(), 1);
+  assert.equal(f.backend.ledger[0].state, 'uncertain');
+});
+
+test('caller Stop takes priority over a simultaneous provider rate limit', async () => {
+  const controller = new AbortController();
+  const f = await fixture(async () => { controller.abort(); return new Response(null, { status: 429, headers: { 'retry-after': '10' } }); });
+  const response = await POST(request(f.cookie, { signal: controller.signal }));
+  assert.equal(response.status, 504);
+  assert.equal(response.headers.get('retry-after'), null);
+  assert.match((await response.json()).error, /stopped or timed out/);
+  assert.equal(f.calls(), 1);
+  assert.equal(f.backend.ledger[0].state, 'uncertain');
+});
+
+
+test('provider polling 429 cancels the known prediction and keeps the reservation charged', async () => {
+  const paths = [];
+  const f = await fixture(async (address) => {
+    paths.push(String(address));
+    if (String(address).endsWith('/cancel')) return Response.json({ status: 'canceled' });
+    if (paths.length === 1) return Response.json({ id: 'asr1', status: 'starting' });
+    return new Response(null, { status: 429, headers: { 'retry-after': '5' } });
+  });
+  const response = await POST(request(f.cookie));
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get('retry-after'), '5');
+  assert.equal(f.calls(), 3);
+  assert.ok(paths[2].endsWith('/asr1/cancel'));
+  assert.equal(f.backend.ledger[0].state, 'uncertain');
+});
