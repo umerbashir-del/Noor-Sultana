@@ -12,7 +12,7 @@ Use the **turnaround** for proportions and the **outfit details** sheet for clot
 ## Canonical outfit
 
 1. **Ivory blouse:** pointed collar, simple front buttons, tucked into the trousers.
-2. **Indigo long coat:** tailored shoulders, fitted waist, below-knee hem, clean back center seam. One emerald panel with sparse antique-gold embroidery runs down her **right front opening**. The sleeve linings turn back to show coral cuffs.
+2. **Indigo long coat:** tailored shoulders, fitted waist, below-knee hem, clean back center seam. One emerald panel with dense antique-gold embroidery, matching the original reference sheets, runs down her **right front opening**. (User confirmed image-reference density on 2026-10-17.) The sleeve linings turn back to show coral cuffs.
 3. **Cream drape:** a narrow dupatta-like scarf hangs from her **right shoulder**, with spaced indigo diamond motifs and a patterned lower border.
 4. **Charcoal trousers:** high waist, dark belt with gold buckle, wide straight legs.
 5. **Footwear:** dark ankle boots with modest block heels.

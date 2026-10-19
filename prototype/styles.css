@@ -5,6 +5,11 @@
   --gold: #e9c778;
   --panel: rgba(17, 27, 43, .92);
   --line: rgba(255, 255, 255, .18);
+  --cabin-ambient-tint: color-mix(in srgb, var(--gold) 14%, transparent);
+  --cabin-ambient-floor: .18;
+  --cabin-ambient-peak: .32;
+  --cabin-ambient-duration: 22s;
+  --noor-framing-scale: 1.24;
   font-family: 'Avenir Next', Avenir, 'Segoe UI', sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -23,7 +28,23 @@ button { color: inherit; }
 .info-button:hover, .info-button[aria-expanded="true"] { border-color: var(--gold); color: var(--gold); }
 
 .cabin { position: relative; flex: 1; min-height: 620px; isolation: isolate; overflow: hidden; background: #273144 url('./assets/airplane-cabin.png') center center / cover no-repeat; }
+.cabin[data-background="tokyo"] { background-image: url('./assets/destinations/tokyo.png'); }
+.cabin[data-background="paris"] { background-image: url('./assets/destinations/paris.png'); }
+.cabin[data-background="dubai"] { background-image: url('./assets/destinations/dubai.png'); }
+.cabin[data-background="rome"] { background-image: url('./assets/destinations/rome.png'); }
+.scene-controls { position: absolute; z-index: 2; top: 16px; left: 14px; display: flex; align-items: center; gap: 8px; padding: 7px 11px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--muted); font-size: 11px; }
+.scene-controls select { min-height: 28px; padding: 3px 7px; border: 1px solid var(--line); border-radius: 5px; background: #172235; color: var(--ink); font: inherit; cursor: pointer; }
+.cabin:not([data-background="cabin"])::before { animation: none; opacity: 0; }
 .scene-shade { position: absolute; z-index: -1; inset: 0; background: linear-gradient(180deg, rgba(12, 19, 32, .16) 0%, transparent 38%, rgba(10, 17, 29, .18) 68%, rgba(10, 17, 29, .7) 100%); }
+/* A separate light layer keeps the cabin image, avatar and controls stationary. */
+.cabin::before { content: ""; position: absolute; z-index: 0; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at 35% 8%, var(--cabin-ambient-tint), transparent 68%); }
+@media (prefers-reduced-motion: no-preference) {
+  .cabin::before { animation: cabin-ambient-light var(--cabin-ambient-duration) ease-in-out infinite alternate; }
+}
+@keyframes cabin-ambient-light {
+  from { opacity: var(--cabin-ambient-floor); }
+  to { opacity: var(--cabin-ambient-peak); }
+}
 
 .noor-wrap { position: absolute; z-index: 1; left: 50%; bottom: 18%; height: min(70vh, 680px); aspect-ratio: 2 / 3; transform: translateX(-50%); animation: noor-idle 3.8s ease-in-out infinite; }
 .noor-sprite { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 12px 16px rgba(0,0,0,.28)); opacity: 0; transition: opacity .2s ease; }
@@ -31,6 +52,15 @@ button { color: inherit; }
 .noor-wrap[data-pose="thinking"] .noor-thinking,
 .noor-wrap[data-pose="concerned"] .noor-thinking { opacity: 1; }
 .noor-wrap.responding { animation: noor-step .8s ease-in-out; }
+/* Shared framing brings both the native model and static fallback closer. */
+.noor-canvas, .noor-sprite { scale: var(--noor-framing-scale); transform-origin: 50% 20%; }
+/* The native rig owns motion after loading. */
+.noor-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; filter: drop-shadow(0 12px 16px rgba(0,0,0,.28)); }
+.noor-wrap[data-avatar="ready"], .noor-wrap[data-avatar="ready"].responding { animation: none; }
+.noor-wrap[data-avatar="ready"] .noor-sprite { visibility: hidden; transition: none; }
+/* The retained hand-to-chin drawing is a thinking-only pose; speech uses the native rig. */
+.noor-wrap[data-avatar="ready"][data-avatar-state="thoughtful"] .noor-canvas { visibility: hidden; }
+.noor-wrap[data-avatar="ready"][data-avatar-state="thoughtful"] .noor-thinking { visibility: visible; opacity: 1; }
 
 @keyframes noor-idle {
   0%, 100% { transform: translateX(-50%) translateY(0); }

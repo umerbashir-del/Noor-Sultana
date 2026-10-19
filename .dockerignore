@@ -7,3 +7,6 @@
 prototype/data
 prototype/*.sqlite*
 prototype/*.test.mjs
+
+# SDK/model assets are authorized for local use only.
+prototype/live2d-local

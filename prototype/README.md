@@ -4,6 +4,20 @@ This is a small prototype with offline launch safeguards. The home page offers f
 
 Passenger shortcuts include **Boarding time**, **Baggage guidance**, **Weather availability**, and **Arrival note**. The boarding time is fictional, baggage guidance comes from a draft knowledge page, and the fixed arrival note is general demo guidance. These shortcuts appear alongside Tokyo weather, weather elsewhere, and the arrival email draft.
 
+## Local Live2D avatar
+
+Open `/flight-demo.html` on the loopback server to use the native V6 rig. It adds small head tilt, independent brows, horizontal gaze, restrained body sway and a modest arm gesture to V5's two-eye blink and single mouth-open shape. The canvas keeps the existing avatar frame. The PNG remains visible while loading and returns if assets or WebGL fail. No browser vertex correction is applied.
+
+`avatar.js` exposes `window.noorAvatar` with readiness, capability flags, `nativePose`, `setState()`, `setMouthOpen()` and `resetMouth()`. States are `welcoming`, `thoughtful`, `listening`, `speaking`, `idle` and `error`. Pending chat answers use thoughtful; voice generation and buffering use idle; actual audio playback uses speaking; Stop/end return to idle. Turning Voice on enables future replies without replaying conversation history. `speech-mouth.js` measures output through Web Audio and HTMLAudio without opening a microphone. The mouth and blink remain independent of poses. Reduced motion neutralizes optional poses, disables automatic blinking and cabin-light animation, and retains speech-mouth movement.
+
+During reply preparation the app shows the retained hand-to-chin thinking PNG. Actual speech switches back to the native model, with short head tilts and left-arm gestures followed by holds and rests, within verified parameter bounds. Continuous body rocking is disabled. The thinking image is static; a rigged hand-to-chin pose and independent right-arm gesture are not built. Mouth movement is still audio-volume driven, not phoneme matched. A separate V7 authoring copy and local Rhubarb timing proof exist outside the repo; no shaped-mouth V7 export or cue playback is enabled yet.
+
+The asset inventory, hashes and bounded verification are in `live2d-local/manifest.json`. The V6 pose gate requires the loaded MOC's SHA256, real native keyforms and measured finite vertex movement. Parameter names alone do not enable it. Pose failures disable only optional poses. V6 passed 1,728 combined native geometry checks and a six-pose WebGL review; its neutral rendered pixels match V5. The source was saved, closed, reopened and re-exported with matching runtime hashes. Detailed local evidence stays in the outer workbench. When replacing an export, update its versioned path, inventory, hashes and verification before restarting the server.
+
+Current limits: head roll rather than a 3D head turn; horizontal gaze only; one mouth-open shape rather than phoneme shapes; a small gesture using the hanging-arm art. A hand-to-chin pose needs additional hand and sleeve artwork. State mapping and playback tests do not establish microphone transcription quality or streaming speech.
+
+Cubism SDK/Core, framework, shaders, model and retained license files are for the user's accepted **local-use scope only**. The server serves only inventory-listed assets in nonproduction mode on loopback, requires a loopback Host header and rejects forwarding headers for those requests. Public builds, Vercel uploads and Docker contexts exclude `live2d-local/`; hosted previews retain the PNG. Publishing or paid use requires a separate license/authorization review.
+
 ## Passenger knowledge
 
 For common passenger questions, the server searches the seven local [draft knowledge pages](../Documents/knowledge/README.md) and sends one matching excerpt to Claude. Noor's answer shows a link to the draft page. The pages offer general next steps only; they are not approved Cloudline Air policy. Noor should say when an allowance, deadline, entitlement, booking detail, or live status cannot be verified. The document search uses a small defined set of question topics and may miss other wording. Weather questions use the separate weather lookup.
@@ -50,6 +64,8 @@ Click **End conversation** to stop voice activity, clear the screen, invalidate 
 
 ## Usage limits and monitoring
 
+For unlimited daily usage during local development, set `NOOR_LOCAL_UNLIMITED_USAGE=1` in the ignored `.env.local` and restart the server. This applies only to a non-production server bound to loopback (`127.0.0.1`, `localhost` or `::1`). Production ignores this flag and retains its configured daily caps. Usage recording, short-term request limits and provider billing/limits still apply.
+
 The server saves only pseudonymous visitor hashes, request categories, counts, and Claude token totals in `data/usage.sqlite` by default. It reserves an estimated token amount before each Claude request, then replaces that estimate with Anthropic's reported input/output usage when available. Uncertain provider outcomes keep their reservation so a timeout cannot create free retries. Default UTC-day limits are 30 Claude requests and 30,000 tokens per browser visitor, with 500 requests and 300,000 tokens overall; speech, transcription, and verification have separate limits in `.env.example`. These are application limits, so also set a Claude workspace spending cap. Clearing cookies can reset one visitor's identity; the overall cap remains. Real user-account limits require an authentication integration.
 
 Usage and error events are logged as structured JSON with route, status, duration, and token counts. Prompts, transcripts, email addresses, cookies, and API keys are excluded. `GET /healthz` returns a minimal health response for a hosting monitor. Visitor usage records are deleted after 30 days. This SQLite ledger and the email scheduler support one server instance; moving to multiple instances requires shared storage and coordination.
@@ -66,9 +82,17 @@ The repository root has a `Dockerfile` that installs Node, Python, Chatterbox, a
 
 ## Noor’s voice
 
-Click **Voice off** in the demo to turn on spoken replies. Noor’s next reply is synthesized locally with Chatterbox Turbo’s built-in voice. Text chat still works if the voice model is unavailable.
+Click **Voice off** in the demo to turn on spoken replies. Noor’s next reply is synthesized locally with Chatterbox Turbo, using `NOOR_VOICE_REFERENCE` when configured or its built-in voice otherwise. Text chat still works if the voice model is unavailable.
 
 Each conversation has its own speech job. Chatterbox processes jobs one at a time to fit the local voice model; a visitor's **Stop** button cancels only that visitor's job. If a job is already generating, the worker restarts before processing the next queued visitor. Voice requests require an active conversation session.
+
+### Faster first audio
+
+The browser requests `{text, stream:true}`. Both the local Node endpoint and the hosted endpoint derive at most three speech segments from the complete reply and return newline-delimited JSON audio records. Playback starts with the first segment while the next generates. The older `{text}` request still returns one WAV file. Stop, a new reply, session end and disconnect cancel pending segments. Mouth movement follows the current playback segment.
+
+The local worker prepares the configured reference voice once during warmup and reuses its conditioning. A small memory cache reuses only exact fixed public phrases such as “Hello.” and “Welcome aboard.” Cache entries expire after ten minutes, share a 2 MB limit, and are keyed by engine/reference identity. Arbitrary conversation replies are not cached. Restarting clears local cache; hosted cache is per warm function instance, not persistent shared storage. Authorization and normal quota checks still run before a cache hit.
+
+Hosted streaming reserves the original exact reply and its character allowance once, rather than trusting client-supplied chunks or charging each sentence as a new reply. It still uses Replicate. Streaming has a 50-second generation budget and up to two seconds for cancellation cleanup within a configured 60-second function duration; this change does not establish live deployed latency. CPU generation can leave pauses between segments, and earlier first audio does not imply shorter total synthesis time. No phoneme alignment or true within-sentence model streaming is implemented. One local CPU sample began audio at 3.4 seconds instead of waiting 10.5 seconds for the old complete WAV, while total synthesis remained about 11.1 seconds. These single measurements are not a general performance guarantee.
 
 ## Talk to Noor
 
@@ -80,7 +104,7 @@ If transcription cannot hear you, click **Check recording** to play back the cli
 
 Talk automatically turns Noor's voice on. The microphone is active only between **Talk** and **Done** (or **Stop**). Automatic end-of-turn detection and always-listening are not used in this version.
 
-The server uses the existing Chatterbox Python environment at `../chatterboc-demo/.venv/Scripts/python.exe`, which now also has `faster-whisper` installed. If you move this project or use another environment, set `CHATTERBOX_PYTHON` in `.env.local` to the full path of a Python executable with `chatterbox-tts`, PyTorch, torchaudio, and `faster-whisper` installed. You can set `ASR_PYTHON` separately if speech recognition uses another environment. The server starts loading Chatterbox when it launches, so the first spoken reply waits less if you allow that startup to finish. Later replies reuse the model. Microphone recordings are processed locally for transcription; the transcript is sent to Claude. The audio reference and generated speech are not sent to Claude.
+Set `CHATTERBOX_PYTHON` in `.env.local` to the full path of a Python executable with the packages in `requirements-voice.txt` installed. The Windows default is `../chatterboc-demo/.venv/Scripts/python.exe`; the Linux default is `/opt/noor-venv/bin/python`. On Mac, configure an isolated local environment explicitly. This workspace uses the outer `workbench/voice/.venv/bin/python` and keeps model downloads under `workbench/voice/cache/huggingface` through `HF_HOME`. Keep the virtual-environment executable path; resolving its symlink can bypass the environment. You can set `ASR_PYTHON` separately if speech recognition uses another environment. The server starts loading Chatterbox when it launches, so the first spoken reply waits less if you allow that startup to finish. Later replies reuse the model. Microphone recordings are processed locally for transcription; the transcript is sent to Claude. The audio reference and generated speech are not sent to Claude.
 
 The Hope reference is a 12.5-second ElevenLabs clip converted to mono 24 kHz, 16-bit PCM WAV. The hosted Chatterbox voice sends this clip to Replicate as a data URI with each speech request. The local demo uses it when `NOOR_VOICE_REFERENCE=voice/noor-reference.wav` is set in `.env.local`; restart `node server.mjs` after changing that setting. Chatterbox follows the reference voice and its delivery, though its generated speech may not match the source exactly.
 

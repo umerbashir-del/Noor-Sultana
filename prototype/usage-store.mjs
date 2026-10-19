@@ -19,8 +19,15 @@ function positiveInt(value, fallback, name) {
   return number;
 }
 
-export function usageLimitsFromEnv(env = process.env) {
+export function usageLimitsFromEnv(env = process.env, { allowUnlimitedLocal = false } = {}) {
   const result = structuredClone(defaultLimits);
+  // Only the loopback development server can opt out; production always has caps.
+  if (allowUnlimitedLocal && env.NODE_ENV !== 'production' && env.NOOR_LOCAL_UNLIMITED_USAGE === '1') {
+    for (const limits of Object.values(result)) {
+      for (const key of Object.keys(limits)) limits[key] = Infinity;
+    }
+    return result;
+  }
   for (const [kind, limits] of Object.entries(result)) {
     const prefix = `NOOR_DAILY_${kind.toUpperCase()}`;
     limits.visitorRequests = positiveInt(env[`${prefix}_VISITOR_REQUESTS`], limits.visitorRequests, `${prefix}_VISITOR_REQUESTS`);

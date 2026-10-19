@@ -1,4 +1,5 @@
 import {mkdtemp,rm} from 'node:fs/promises';
+import {existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve,sep,basename} from 'node:path';
 import assert from 'node:assert/strict';
@@ -28,6 +29,27 @@ test('health, visitor cookies, origin checks, and session isolation work over HT
     const health = await fetch(`${base}/healthz`);
     assert.equal(health.status, 200);
     assert.deepEqual(await health.json(), { status: 'ok' });
+
+    const avatarManifest = await fetch(`${base}/live2d-local/manifest.json`);
+    // Licensed assets are optional in a code-only checkout. Chat and PNG fallback are not.
+    if (existsSync(new URL('./live2d-local/manifest.json', import.meta.url))) {
+      assert.equal(avatarManifest.status, 200);
+      const avatar = await avatarManifest.json();
+      const nativeModel = await fetch(`${base}/live2d-local/${avatar.model}`);
+      assert.equal(nativeModel.status, 200);
+      assert.match(nativeModel.headers.get('content-type'), /application\/json/);
+    } else {
+      assert.equal(avatarManifest.status, 404);
+    }
+    const flightPage = await fetch(`${base}/flight-demo.html`);
+    assert.equal(flightPage.status, 200);
+    assert.match(await flightPage.text(), /src="\.\/assets\/noor\.png"/);
+    const fallbackImage = await fetch(`${base}/assets/noor.png`);
+    assert.equal(fallbackImage.status, 200);
+    assert.match(fallbackImage.headers.get('content-type'), /image\/png/);
+    assert.equal((await fetch(`${base}/live2d-local/not-in-manifest.js`)).status, 404);
+    assert.equal((await fetch(`${base}/live2d-local/../server.mjs`)).status, 404);
+    assert.equal((await fetch(`${base}/avatar.js`)).status, 200);
 
     const startAlice = await fetch(`${base}/api/session`, { method: 'POST' });
     assert.equal(startAlice.status, 200);

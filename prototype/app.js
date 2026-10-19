@@ -58,6 +58,22 @@ const emailReviewBody = document.querySelector('#emailReviewBody');
 const confirmScheduleButton = document.querySelector('#confirmScheduleButton');
 const editEmailAddressButton = document.querySelector('#editEmailAddressButton');
 const closeReviewButton = document.querySelector('#closeReviewButton');
+const backgroundSelect = document.querySelector('#backgroundSelect');
+const noorScene = document.querySelector('#noorScene');
+const sceneLabels = { cabin: 'Airplane cabin scene', tokyo: 'Tokyo destination scene', paris: 'Paris destination scene', dubai: 'Dubai destination scene', rome: 'Rome destination scene' };
+const backgroundPreferenceKey = 'noor.background';
+function applyBackground(background) {
+  if (!Object.hasOwn(sceneLabels, background) || !noorScene || !backgroundSelect) return false;
+  noorScene.dataset.background = background;
+  noorScene.setAttribute('aria-label', sceneLabels[background]);
+  backgroundSelect.value = background;
+  return true;
+}
+try { applyBackground(localStorage.getItem(backgroundPreferenceKey)); } catch { /* Storage can be disabled. */ }
+backgroundSelect?.addEventListener('change', () => {
+  if (!applyBackground(backgroundSelect.value)) return;
+  try { localStorage.setItem(backgroundPreferenceKey, backgroundSelect.value); } catch { /* Keep switching usable without storage. */ }
+});
 const noor = document.querySelector('#noorWrap');
 const flightCard = document.querySelector('#flightCard');
 const flightInfoButton = document.querySelector('#flightInfoButton');
@@ -127,8 +143,19 @@ let emailVerified = false;
 let emailReviewHash;
 let reviewedSendTime;
 let emailPollTimer;
+let speechMouth;
+let avatarState = 'welcoming';
+const speechMouthReady = import('./speech-mouth.js').then(({ createSpeechMouth }) => {
+  speechMouth = createSpeechMouth();
+  speechMouth.watchMediaElement(voiceAudio, () => voiceContext);
+  return speechMouth;
+}).catch(() => undefined); // Voice still plays if optional animation cannot load.
+window.addEventListener('noor-avatar-ready', () => window.noorAvatar?.setState(avatarState));
 
 function stopSpeech() {
+  if (avatarState === 'speaking' || voiceRequest || (avatarState === 'thoughtful' && !chatRequest)) setAvatarState('idle');
+  voiceAudio.onplaying = voiceAudio.onwaiting = voiceAudio.onpause = voiceAudio.onerror = voiceAudio.onended = null;
+  speechMouth?.stop();
   voiceGeneration += 1;
   if (vercelPreview && voiceRequest) voiceRestartAfter = Date.now() + 1500;
   voiceRequest?.abort();
@@ -284,6 +311,8 @@ async function speakReply(text) {
   const generation = voiceGeneration;
   const controller = new AbortController();
   voiceRequest = controller;
+  // The answer is ready; audio preparation is not a new thinking turn.
+  setAvatarState('idle');
   voiceStatus.textContent = 'Generating Noor’s voice… This may take a few seconds.';
   try {
     const waitForPrevious = voiceRestartAfter - Date.now();
@@ -296,16 +325,22 @@ async function speakReply(text) {
     const response = await fetch('/api/speak', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, stream: true }),
       signal: controller.signal,
     });
     if (!response.ok) {
       const detail = await response.json().catch(() => ({}));
       throw new Error(detail.error || 'Voice unavailable');
     }
+    if (response.headers?.get('content-type')?.includes('application/x-ndjson')) {
+      await playStreamedSpeech(response, generation, controller);
+      return;
+    }
     const audio = await response.blob();
     if (generation !== voiceGeneration || !voiceEnabled) return;
     voiceRequest = undefined;
+    await speechMouthReady;
+    if (generation !== voiceGeneration || !voiceEnabled) return;
     if (voiceContext?.state === 'running') {
       try {
         const decoded = await voiceContext.decodeAudioData(await audio.arrayBuffer());
@@ -317,29 +352,161 @@ async function speakReply(text) {
           if (voiceSource !== source) return;
           voiceSource = undefined;
           source.disconnect();
+          speechMouth?.stop();
+          setAvatarState('idle');
           voiceStatus.textContent = 'Voice on';
         };
         voiceSource = source;
         source.start();
+        setAvatarState('speaking');
+        speechMouth?.trackSource(source, voiceContext);
         voiceStatus.textContent = 'Noor is speaking. Press Stop to interrupt.';
         return;
-      } catch { /* Fall back to the browser audio element. */ }
+      } catch {
+        if (generation !== voiceGeneration || !voiceEnabled) return;
+        speechMouth?.stop();
+        if (voiceSource) {
+          voiceSource.onended = null;
+          try { voiceSource.stop(); } catch { /* Source may not have started. */ }
+          voiceSource.disconnect();
+          voiceSource = undefined;
+        }
+        // Fall back to the browser audio element.
+      }
     }
+    if (generation !== voiceGeneration || !voiceEnabled) return;
     voiceUrl = URL.createObjectURL(audio);
     voiceAudio.src = voiceUrl;
+    bindSpeechPlaybackState(generation, voiceUrl);
     voiceStatus.textContent = 'Noor is speaking. Press Stop to interrupt.';
     try { await voiceAudio.play(); }
     catch {
+      if (generation !== voiceGeneration || !voiceEnabled) return;
+      speechMouth?.stop();
       playReplyButton.hidden = false;
+      setAvatarState('idle');
       voiceStatus.textContent = 'Audio is ready. Press Play reply to hear Noor.';
     }
   } catch (error) {
+    if (generation === voiceGeneration) { speechMouth?.stop(); playReplyButton.hidden = true; }
     if (error.name !== 'AbortError' && generation === voiceGeneration) {
+      setAvatarState('error');
       voiceStatus.textContent = vercelPreview ? error.message : 'Voice unavailable. Check the server window or try again.';
     }
   } finally {
     if (voiceRequest === controller) voiceRequest = undefined;
   }
+}
+
+// Read while playing: the next native audio segment can generate in parallel.
+async function playStreamedSpeech(response, generation, controller) {
+  const current = () => generation === voiceGeneration && voiceEnabled && !controller.signal.aborted;
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('Voice stream is unavailable.');
+  const cancelStream = () => { void reader.cancel().catch(() => {}); };
+  controller.signal.addEventListener('abort', cancelStream, { once: true });
+  const decoder = new TextDecoder();
+  let pending = '', count = 0, done = false, playback = Promise.resolve(), playbackError;
+  const enqueue = line => {
+    const entry = JSON.parse(line);
+    if (entry.error) throw new Error(entry.error);
+    if (entry.done === true) { if (!count || done) throw new Error('Invalid voice stream.'); done = true; return; }
+    if (done || count >= 3 || entry.index !== count || typeof entry.audio !== 'string'
+      || entry.audio.length > 6_700_000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(entry.audio)) throw new Error('Invalid voice segment.');
+    const raw = atob(entry.audio);
+    const audio = new Blob([Uint8Array.from(raw, value => value.charCodeAt(0))], { type: 'audio/wav' });
+    count += 1;
+    playback = playback.then(async () => {
+      if (current()) await playSpeechSegment(audio, generation, controller.signal);
+    }).catch(error => { playbackError ||= error; controller.abort(); });
+  };
+  try {
+    while (true) {
+      const part = await reader.read();
+      pending += decoder.decode(part.value, { stream: !part.done });
+      let newline;
+      while ((newline = pending.indexOf('\n')) >= 0) {
+        const line = pending.slice(0, newline); pending = pending.slice(newline + 1);
+        if (line.trim()) enqueue(line);
+      }
+      if (pending.length > 6_700_100) throw new Error('Voice segment is too large.');
+      if (part.done) break;
+    }
+    if (pending.trim()) enqueue(pending);
+    if (!done) throw new Error('Voice stream ended before the reply finished.');
+    await playback;
+    if (playbackError) throw playbackError;
+    if (current()) { setAvatarState('idle'); voiceStatus.textContent = 'Voice on'; }
+  } catch (error) {
+    controller.abort();
+    await reader.cancel().catch(() => {});
+    await playback;
+    // Aborting playback during cleanup must not hide the stream's actual error.
+    throw playbackError && playbackError.name !== 'AbortError' ? playbackError : error;
+  } finally { controller.signal.removeEventListener('abort', cancelStream); reader.releaseLock(); }
+}
+
+async function playSpeechSegment(audio, generation, signal) {
+  const current = () => generation === voiceGeneration && voiceEnabled && !signal.aborted;
+  const cancelled = () => Object.assign(new Error('Voice stopped.'), { name: 'AbortError' });
+  await speechMouthReady;
+  if (!current()) throw cancelled();
+  // Decoding can fail on some browsers; keep the native HTMLAudio fallback.
+  let decoded;
+  if (voiceContext?.state === 'running') {
+    try { decoded = await voiceContext.decodeAudioData(await audio.arrayBuffer()); } catch { /* Use media element below. */ }
+  }
+  if (!current()) throw cancelled();
+  await new Promise((resolve, reject) => {
+    let source, url, settled = false;
+    const finish = error => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener('abort', abort);
+      if (source) {
+        source.onended = null;
+        if (error) { try { source.stop(); } catch { /* Already ended. */ } }
+        source.disconnect();
+        if (voiceSource === source) voiceSource = undefined;
+      }
+      if (url) {
+        URL.revokeObjectURL(url);
+        if (voiceUrl === url) { voiceAudio.pause(); voiceAudio.removeAttribute('src'); voiceUrl = undefined; }
+      }
+      if (current()) {
+        speechMouth?.stop();
+        setAvatarState('idle');
+        voiceStatus.textContent = 'Preparing the next part of Noor’s reply…';
+        playReplyButton.hidden = true;
+      }
+      error ? reject(error) : resolve();
+    };
+    const abort = () => finish(cancelled());
+    signal.addEventListener('abort', abort, { once: true });
+    if (!current()) { abort(); return; }
+    if (decoded) {
+      try {
+        source = voiceContext.createBufferSource(); source.buffer = decoded;
+        source.connect(voiceContext.destination); source.onended = () => finish();
+        voiceSource = source; source.start();
+        speechMouth?.trackSource(source, voiceContext);
+        setAvatarState('speaking'); voiceStatus.textContent = 'Noor is speaking. Press Stop to interrupt.';
+        return;
+      } catch {
+        if (source) { source.onended = null; try { source.stop(); } catch {} source.disconnect(); if (voiceSource === source) voiceSource = undefined; }
+        source = undefined;
+      }
+    }
+    url = URL.createObjectURL(audio); voiceUrl = url; voiceAudio.src = url;
+    bindSpeechPlaybackState(generation, url);
+    voiceAudio.onended = () => finish();
+    voiceAudio.onerror = () => finish(new Error('Your browser could not play this audio.'));
+    voiceAudio.play().catch(() => {
+      if (!current() || settled) return;
+      speechMouth?.stop(); playReplyButton.hidden = false;
+      setAvatarState('idle'); voiceStatus.textContent = 'Audio is ready. Press Play reply to hear Noor.';
+    });
+  });
 }
 
 voiceAudio.addEventListener('ended', () => {
@@ -350,14 +517,22 @@ voiceAudio.addEventListener('ended', () => {
 });
 
 playReplyButton.addEventListener('click', async () => {
+  const generation = voiceGeneration;
+  if (!voiceEnabled || !voiceUrl) return;
   try {
     await voiceAudio.play();
+    if (generation !== voiceGeneration || !voiceEnabled) return;
     playReplyButton.hidden = true;
     voiceStatus.textContent = 'Noor is speaking. Press Stop to interrupt.';
-  } catch { voiceStatus.textContent = 'Your browser could not play this audio.'; }
+  } catch {
+    if (generation !== voiceGeneration || !voiceEnabled) return;
+    speechMouth?.stop();
+    setAvatarState('error');
+    voiceStatus.textContent = 'Your browser could not play this audio.';
+  }
 });
 
-function setVoiceEnabled(enabled, replay = true) {
+function setVoiceEnabled(enabled) {
   if (enabled && !voiceAvailable) return;
   voiceEnabled = enabled;
   voiceToggle.setAttribute('aria-pressed', String(enabled));
@@ -365,7 +540,6 @@ function setVoiceEnabled(enabled, replay = true) {
   if (enabled) {
     unlockVoicePlayback();
     voiceStatus.textContent = 'Noor will speak her replies.';
-    if (replay && conversation.at(-1)?.role === 'assistant') speakReply(conversation.at(-1).content);
   } else {
     stopSpeech();
     void cancelSynthesis();
@@ -388,8 +562,25 @@ async function loadVoiceAvailability() {
     : 'Chatterbox voice is not connected yet. You can still talk and read Noor’s replies.';
 }
 
+function setAvatarState(state) {
+  avatarState = state;
+  noor.dataset.pose = state === 'thoughtful' ? 'thinking' : 'welcome';
+  noor.dataset.avatarState = state;
+  window.noorAvatar?.setState(state);
+}
+
+function bindSpeechPlaybackState(generation, url) {
+  const current = () => generation === voiceGeneration && voiceEnabled && voiceUrl === url;
+  voiceAudio.onplaying = () => { if (current() && !voiceAudio.paused) setAvatarState('speaking'); };
+  voiceAudio.onwaiting = () => { if (current()) setAvatarState('idle'); };
+  voiceAudio.onpause = () => { if (current()) setAvatarState('idle'); };
+  voiceAudio.onended = () => { if (generation === voiceGeneration && !voiceSource && !voiceRequest) setAvatarState('idle'); };
+  voiceAudio.onerror = () => { if (current()) setAvatarState('error'); };
+}
+
 function setPose(pose) {
   noor.dataset.pose = pose === 'thoughtful' ? 'thinking' : 'welcome';
+  setAvatarState(pose === 'thoughtful' ? 'thoughtful' : 'welcoming');
 }
 
 function animateNoor() {
@@ -458,9 +649,11 @@ async function startSession(successMessage = 'Conversation ready. End it to clea
     endConversationButton.disabled = false;
     endConversationButton.textContent = 'End conversation';
     sessionStatus.textContent = successMessage;
+    setAvatarState('welcoming');
   } catch {
     endConversationButton.disabled = false;
     endConversationButton.textContent = 'Retry session';
+    setAvatarState('error');
     sessionStatus.textContent = 'Could not start a conversation. Check the server and retry.';
   }
 }
@@ -767,6 +960,7 @@ function cancelPendingChat() {
 }
 
 function finishRecording(discard = false) {
+  if (browserRecognition || recorder?.state === 'recording') setAvatarState(discard ? 'idle' : 'thoughtful');
   if (discard) discardRecording = true;
   if (browserRecognition) {
     if (discard) {
@@ -796,6 +990,7 @@ function interruptNoor() {
   cancelPendingChat();
   transcribeRequest?.abort();
   transcribeRequest = undefined;
+  setAvatarState('idle');
 }
 
 function clearTranscriptReview(clearText = false) {
@@ -885,7 +1080,8 @@ async function sendMessage(message) {
     }
     renderTranslation(data.translation);
     responseText.textContent = data.reply;
-    setPose(data.expression);
+    // Reply expressions must not keep the pending-answer artwork visible.
+    setAvatarState('idle');
     sourceLine.textContent = data.sourceLabel || 'Claude · Fictional flight information · Not live';
     renderKnowledgeSources(data.knowledgeSources);
     if (data.weather) renderWeather(data.weather);
@@ -924,6 +1120,7 @@ async function sendMessage(message) {
       sourceLine.textContent = 'Connection unavailable';
       renderKnowledgeSources();
       setPose('welcome');
+      setAvatarState('error');
     }
   } finally {
     if (turn === chatSequence) {
@@ -946,8 +1143,10 @@ async function sendMessage(message) {
 }
 
 async function transcribeForReview(blob) {
+  setAvatarState('thoughtful');
   keepRecordingPreview(blob);
   if (blob.size < 1000) {
+    setAvatarState('idle');
     micStatus.textContent = 'Recording was too short. Try again, or use Check recording to hear what the microphone captured.';
     talkButton.disabled = !sessionReady;
     return;
@@ -968,12 +1167,14 @@ async function transcribeForReview(blob) {
     talkButton.disabled = !sessionReady;
     const transcript = typeof data.text === 'string' ? data.text.trim() : '';
     if (!transcript) {
+      setAvatarState('idle');
       micStatus.textContent = 'No speech was recognized. Press Talk to try again, or type your question.';
       return;
     }
     reviewTranscript(transcript);
   } catch (error) {
     if (error.name !== 'AbortError') {
+      if (transcribeRequest === controller) setAvatarState('error');
       micStatus.textContent = `${error.message || 'Could not transcribe.'} Use Check recording; if it is silent, choose another microphone.`;
     }
     talkButton.disabled = !sessionReady;
@@ -983,6 +1184,7 @@ async function transcribeForReview(blob) {
 }
 
 function reviewTranscript(transcript) {
+  setAvatarState('idle');
   input.value = transcript;
   reviewingTranscript = true;
   transcriptReview.hidden = false;
@@ -999,7 +1201,7 @@ function startBrowserRecognition() {
   clearRecordingPreview();
   browserRecognitionDraft = input.value;
   input.value = '';
-  if (voiceAvailable && !voiceEnabled) setVoiceEnabled(true, false);
+  if (voiceAvailable && !voiceEnabled) setVoiceEnabled(true);
   const session = ++micSequence;
   const recognition = new BrowserSpeechRecognition();
   recognition.lang = 'en-US';
@@ -1015,6 +1217,7 @@ function startBrowserRecognition() {
   sendButton.disabled = true;
   micStatus.textContent = 'Requesting microphone access…';
   recognition.onstart = () => {
+    if (browserRecognition === recognition && session === micSequence && !discardRecording) setAvatarState('listening');
     if (session === micSequence) micStatus.textContent = 'Listening… words appear in the question field. Press Done when you finish.';
   };
   recognition.onresult = (event) => {
@@ -1025,6 +1228,7 @@ function startBrowserRecognition() {
   recognition.onerror = (event) => {
     recognitionError = true;
     if (session === micSequence && !discardRecording) {
+      setAvatarState('error');
       micStatus.textContent = event.error === 'not-allowed'
         ? 'Microphone permission was denied. Check browser settings, or type your question.'
         : 'Speech was not recognized. Press Talk to try again, or type your question.';
@@ -1035,6 +1239,7 @@ function startBrowserRecognition() {
     clearTimeout(recordTimeout);
     browserRecognition = undefined;
     if (session !== micSequence) return;
+    setAvatarState(recognitionError ? 'error' : 'idle');
     doneButton.disabled = true;
     talkButton.disabled = !canTalk();
     sendButton.disabled = !sessionReady;
@@ -1060,6 +1265,7 @@ function startBrowserRecognition() {
     doneButton.disabled = true;
     talkButton.disabled = !canTalk();
     sendButton.disabled = !sessionReady;
+    setAvatarState('error');
     micStatus.textContent = 'Could not start the microphone. You can still type a question.';
   }
 }
@@ -1075,7 +1281,7 @@ async function startRecording() {
   interruptNoor();
   clearTranscriptReview(true);
   clearRecordingPreview();
-  if (voiceAvailable && !voiceEnabled) setVoiceEnabled(true, false);
+  if (voiceAvailable && !voiceEnabled) setVoiceEnabled(true);
   const session = ++micSequence;
   talkButton.disabled = true;
   micStatus.textContent = 'Requesting microphone access…';
@@ -1112,6 +1318,7 @@ async function startRecording() {
       else void transcribeForReview(blob);
     }, { once: true });
     activeRecorder.start(250);
+    setAvatarState('listening');
     doneButton.disabled = false;
     micStatus.textContent = 'Listening… press Done when you finish.';
     recordTimeout = window.setTimeout(() => {
@@ -1126,6 +1333,7 @@ async function startRecording() {
     recorder = undefined;
     talkButton.disabled = !sessionReady;
     doneButton.disabled = true;
+    setAvatarState('error');
     micStatus.textContent = 'Microphone access failed. Check browser permission, or type your question.';
   }
 }
