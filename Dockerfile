@@ -13,7 +13,6 @@ RUN python3 -m venv /opt/noor-venv \
 
 WORKDIR /app
 COPY prototype /app/prototype
-COPY lib/speech-cache.mjs lib/speech-segments.mjs /app/lib/
 COPY Documents/knowledge /app/Documents/knowledge
 RUN mkdir -p /app/data && chown -R node:node /app/data /app/prototype /app/Documents
 

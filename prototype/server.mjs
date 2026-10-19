@@ -1,5 +1,3 @@
-import { segmentSpeech } from '../lib/speech-segments.mjs';
-import { createSpeechCache } from '../lib/speech-cache.mjs';
 import { runBudgetedClaude } from './token-budget.mjs';
 import { createTraceStore } from './trace-store.mjs';
 import { answerWithTools, requestToolModel, passengerTools } from './agent.mjs';
@@ -49,9 +47,7 @@ const requestsByAddress = new Map();
 const sessions = createSessionStore();
 const usageStore = createUsageStore({
   dbPath: process.env.NOOR_USAGE_DB || resolve(dataDir, 'usage.sqlite'),
-  limits: usageLimitsFromEnv(process.env, {
-    allowUnlimitedLocal: !config.production && ['127.0.0.1', 'localhost', '::1'].includes(config.host),
-  }),
+  limits: usageLimitsFromEnv(),
 });
 setInterval(() => { sessions.prune(); usageStore.prune(); }, 5 * 60_000).unref();
 const sessionCookieName = 'noor_session';
@@ -78,42 +74,11 @@ const publicFiles = new Set([
   'assets/destinations/dubai.png',
   'assets/destinations/rome.png',
   'app.js',
-  'avatar.js',
-  'avatar-pose.mjs',
-  'speech-mouth.js',
   'styles.css',
   'assets/airplane-cabin.png',
   'assets/noor.png',
   'assets/noor-thinking.png',
 ]);
-
-// Local-use SDK consent does not authorize public serving or preview builds.
-const localAvatarEnabled = !config.production && ['127.0.0.1', 'localhost', '::1'].includes(config.host);
-// A loopback bind alone does not identify requests forwarded by a tunnel.
-function localAvatarRequestAllowed(request) {
-  if (!localAvatarEnabled) return false;
-  const host = request.headers.host;
-  if (typeof host !== 'string' || !/^(?:localhost|127\.0\.0\.1|\[::1\])(?::[0-9]{1,5})?$/i.test(host)) return false;
-  const port = /:([0-9]+)$/.exec(host);
-  if (port && Number(port[1]) > 65535) return false;
-  const hostFields = request.rawHeaders?.filter((_, i) => i % 2 === 0 && request.rawHeaders[i].toLowerCase() === 'host');
-  if (hostFields && hostFields.length !== 1) return false;
-  return !Object.keys(request.headers).some(name => {
-    const header = name.toLowerCase();
-    return header === 'forwarded' || header.startsWith('x-forwarded-') || ['via', 'x-real-ip', 'cf-connecting-ip', 'true-client-ip'].includes(header);
-  });
-}
-
-const localAvatarFiles = new Set();
-if (localAvatarEnabled) {
-  try {
-    const manifest = JSON.parse(await readFile(resolve(root, 'live2d-local/manifest.json'), 'utf8'));
-    localAvatarFiles.add('live2d-local/manifest.json');
-    for (const name of manifest.files) {
-      if (typeof name === 'string' && !name.startsWith('/') && !name.split('/').includes('..') && /^[a-zA-Z0-9_./-]+$/.test(name)) localAvatarFiles.add(`live2d-local/${name}`);
-    }
-  } catch { /* A missing local asset set leaves the existing PNG fallback available. */ }
-}
 
 const model = process.env.ANTHROPIC_MODEL || 'claude-haiku-5-5';
 const emailProvider = createResendProvider({ apiKey: process.env.RESEND_API_KEY, from: process.env.NOOR_EMAIL_FROM });
@@ -229,30 +194,9 @@ async function generateSpeech(text) {
 }
 
 const voiceJobs = createVoiceJobQueue({
-  run: payload => payload?.kind === 'identity' ? voiceCommand(payload) : generateSpeech(payload),
+  run: generateSpeech,
   cancelActive: () => voiceWorker?.kill(),
 });
-const speechCache = createSpeechCache();
-const speechRequests = new Map();
-
-function cancelSessionSpeech(sessionId) {
-  speechRequests.get(sessionId)?.cancel();
-  voiceJobs.cancelSession(sessionId);
-}
-
-function writeSpeechLine(response, payload, entry) {
-  if (entry?.cancelled || response.destroyed || response.writableEnded) return Promise.resolve(false);
-  if (response.write(JSON.stringify(payload) + '\n')) return Promise.resolve(true);
-  return new Promise(resolve => {
-    const finish = success => { response.off('drain', drained); response.off('close', closed); if (entry?.waitCancel === closed) entry.waitCancel = null; resolve(success); };
-    const drained = () => finish(true);
-    const closed = () => finish(false);
-    response.once('drain', drained); response.once('close', closed);
-    if (entry) entry.waitCancel = closed;
-    if (entry?.cancelled || response.destroyed) closed();
-  });
-}
-
 
 function ensureAsrWorker() {
   if (asrWorker) return asrWorker;
@@ -355,7 +299,7 @@ async function handleTranscribe(request, response) {
 function handleStop(request, response) {
   const session = sessionFrom(request);
   if (!session) return sendJson(response, 401, { error: 'Your conversation has ended. Please start a new one.' });
-  cancelSessionSpeech(session.id);
+  voiceJobs.cancelSession(session.id);
   return sendJson(response, 200, { stopped: true });
 }
 
@@ -376,78 +320,31 @@ async function handleSpeak(request, response) {
     if (error instanceof UsageLimitError) return sendJson(response, 429, { error: error.message });
     throw error;
   }
-  const streaming = body.stream === true;
-  const entry = {
-    cancelled: false,
-    job: null,
-    cancel() { this.cancelled = true; this.job?.cancel(); this.waitCancel?.(); },
-  };
-  speechRequests.get(session.id)?.cancel();
-  speechRequests.set(session.id, entry);
-  const current = () => !entry.cancelled && speechRequests.get(session.id) === entry && !response.destroyed;
-  const closed = () => { if (!response.writableEnded) entry.cancel(); };
-  response.on('close', closed);
-  if (response.destroyed) entry.cancel();
+  let job;
   try {
-    let identity;
-    if (streaming) {
-      if (!current()) return;
-      entry.job = voiceJobs.submit(session.id, { kind: 'identity' });
-      const info = await entry.job.promise;
-      entry.job = null;
-      if (!current()) throw new VoiceJobCancelled();
-      identity = info.identity;
-      if (typeof identity !== 'string' || !identity.startsWith('chatterbox-tts@')) throw new Error('Voice identity unavailable');
-    }
-    const segments = streaming ? segmentSpeech(text.trim()) : [text.trim()];
-    for (const [index, segment] of segments.entries()) {
-      if (!current()) throw new VoiceJobCancelled();
-      let audio = streaming ? speechCache.get(identity, segment) : null;
-      if (!audio) {
-        entry.job = voiceJobs.submit(session.id, segment);
-        audio = await entry.job.promise;
-        entry.job = null;
-        if (!current()) throw new VoiceJobCancelled();
-        if (streaming) speechCache.set(identity, segment, audio);
-      }
-      if (!current()) throw new VoiceJobCancelled();
-      if (streaming) {
-        if (!response.headersSent) response.writeHead(200, {
-          'content-type': 'application/x-ndjson; charset=utf-8',
-          'cache-control': 'no-store',
-          'x-content-type-options': 'nosniff',
-          'x-accel-buffering': 'no',
-        });
-        if (!await writeSpeechLine(response, { index, audio: Buffer.from(audio).toString('base64') }, entry)) {
-          if (response.destroyed) return;
-          throw new VoiceJobCancelled();
-        }
-      } else {
-        response.writeHead(200, {
-          'content-type': 'audio/wav',
-          'content-length': audio.length,
-          'cache-control': 'no-store',
-          'x-content-type-options': 'nosniff',
-        });
-        response.end(audio);
-      }
-    }
-    if (streaming) {
-      if (!current()) throw new VoiceJobCancelled();
-      response.end(JSON.stringify({ done: true }) + '\n');
-    }
+    job = voiceJobs.submit(session.id, text.trim());
+  } catch (error) {
+    if (error instanceof VoiceQueueFull) return sendJson(response, 429, { error: error.message });
+    throw error;
+  }
+  response.on('close', () => {
+    if (!response.writableEnded) job.cancel();
+  });
+  if (response.destroyed) job.cancel();
+  try {
+    const audio = await job.promise;
+    if (response.destroyed) return;
+    response.writeHead(200, {
+      'content-type': 'audio/wav',
+      'content-length': audio.length,
+      'cache-control': 'no-store',
+      'x-content-type-options': 'nosniff',
+    });
+    response.end(audio);
   } catch (error) {
     if (response.destroyed) return;
-    const stopped = entry.cancelled || error instanceof VoiceJobCancelled;
-    const message = stopped ? 'Speech was stopped.' : 'Noor’s voice is unavailable. Please try again.';
-    if (streaming && response.headersSent) {
-      response.end(JSON.stringify({ error: message }) + '\n');
-    } else if (stopped) return sendJson(response, 409, { error: message });
-    else if (error instanceof VoiceQueueFull) return sendJson(response, 429, { error: error.message });
-    else return sendJson(response, 503, { error: message });
-  } finally {
-    response.off('close', closed);
-    if (speechRequests.get(session.id) === entry) speechRequests.delete(session.id);
+    if (error instanceof VoiceJobCancelled) return sendJson(response, 409, { error: 'Speech was stopped.' });
+    return sendJson(response, 503, { error: 'Noor’s voice is unavailable. Check the server window for details.' });
   }
 }
 
@@ -486,7 +383,7 @@ function handleStartSession(request, response) {
   const previousId = sessionIdFrom(request);
   const visitorId = visitorIdFrom(request) || newVisitorId();
   if (previousId && sessionFrom(request)) {
-    cancelSessionSpeech(previousId);
+    voiceJobs.cancelSession(previousId);
     sessions.end(previousId);
   }
   const session = sessions.create(visitorId);
@@ -500,7 +397,7 @@ function handleStartSession(request, response) {
 function handleEndSession(request, response) {
   const session = sessionFrom(request);
   if (session) {
-    cancelSessionSpeech(session.id);
+    voiceJobs.cancelSession(session.id);
     sessions.end(session.id);
   }
   clearSessionCookie(response);
@@ -781,13 +678,9 @@ const mimeTypes = {
   '.js': 'text/javascript; charset=utf-8',
   '.mjs': 'text/javascript; charset=utf-8',
   '.png': 'image/png',
-  '.json': 'application/json; charset=utf-8',
-  '.vert': 'text/plain; charset=utf-8',
-  '.frag': 'text/plain; charset=utf-8',
-  '.md': 'text/plain; charset=utf-8',
 };
 
-async function serveStatic(pathname, response, request) {
+async function serveStatic(pathname, response) {
   let decoded;
   try {
     decoded = decodeURIComponent(pathname);
@@ -796,11 +689,7 @@ async function serveStatic(pathname, response, request) {
     return;
   }
   const relative = decoded === '/' || decoded === '/index.html' ? 'home.html' : decoded === '/flight-demo.html' ? 'index.html' : decoded.replace(/^\/+/, '');
-  if (relative.startsWith('live2d-local/') && !localAvatarRequestAllowed(request)) {
-    response.writeHead(404).end('Not found');
-    return;
-  }
-  if (!publicFiles.has(relative) && !localAvatarFiles.has(relative)) {
+  if (!publicFiles.has(relative)) {
     response.writeHead(404).end('Not found');
     return;
   }
@@ -815,7 +704,7 @@ async function serveStatic(pathname, response, request) {
       'content-type': mimeTypes[extname(file)] || 'application/octet-stream',
       'x-content-type-options': 'nosniff',
       'cache-control': 'no-cache',
-      'content-security-policy': "default-src 'self'; img-src 'self'; media-src 'self' blob:; style-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+      'content-security-policy': "default-src 'self'; img-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
     });
     response.end(data);
   } catch {
@@ -864,7 +753,7 @@ export const server = createServer(async (request, response) => {
     if (request.method === 'POST' && url.pathname === '/api/transcribe') return await handleTranscribe(request, response);
     if (request.method === 'POST' && url.pathname === '/api/stop') return handleStop(request, response);
     if (request.method === 'GET' && url.pathname.startsWith('/knowledge/')) return await serveKnowledge(url.pathname, response);
-    if (request.method === 'GET' && !url.pathname.startsWith('/api/')) return await serveStatic(url.pathname, response, request);
+    if (request.method === 'GET' && !url.pathname.startsWith('/api/')) return await serveStatic(url.pathname, response);
     return sendJson(response, 404, { error: 'Not found.' });
   } catch (error) {
     logEvent('server_error', { route, kind: error?.name || 'Error' });

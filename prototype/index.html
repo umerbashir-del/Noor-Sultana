@@ -15,21 +15,11 @@
         <button class="info-button" id="flightInfoButton" type="button" aria-expanded="false" aria-controls="flightCard">Flight details</button>
       </header>
 
-      <section class="cabin" id="noorScene" data-background="cabin" aria-label="Airplane cabin scene">
-        <label class="scene-controls" for="backgroundSelect">Background
-          <select id="backgroundSelect">
-            <option value="cabin">Cabin</option>
-            <option value="tokyo">Tokyo</option>
-            <option value="paris">Paris</option>
-            <option value="dubai">Dubai</option>
-            <option value="rome">Rome</option>
-          </select>
-        </label>
+      <section class="cabin" aria-label="Airplane cabin scene">
         <div class="scene-shade" aria-hidden="true"></div>
 
         <div class="scene-caption"><p>Welcome aboard</p><h1>Your in-flight guide.</h1><span>Meet Noor · Noor International Airlines</span></div>
         <div class="noor-wrap" id="noorWrap" data-pose="welcome" role="img" aria-label="Noor, your in-flight guide">
-          <canvas class="noor-canvas" id="noorCanvas" aria-hidden="true" hidden></canvas>
           <img class="noor-sprite" src="./assets/noor.png" alt="" />
           <img class="noor-sprite noor-thinking" src="./assets/noor-thinking.png" alt="" />
         </div>
@@ -226,6 +216,5 @@
       </div>
     </dialog>
     <script src="./app.js" defer></script>
-    <script src="./avatar.js" type="module"></script>
   </body>
 </html>

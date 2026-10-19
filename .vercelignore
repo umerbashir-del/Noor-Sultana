@@ -22,6 +22,3 @@ scripts/inspect-agent-traces.mjs
 scripts/check-hosted-actions.sql
 
 scripts/check-crew-dashboard.sql
-
-# SDK/model assets are authorized for local use only.
-prototype/live2d-local

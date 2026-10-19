@@ -3,12 +3,3 @@ public/
 
 .vercel
 .env*
-# Local Noor working environments, credentials, and bulky experiment archives
-/workbench/
-/archive/
-.DS_Store
-__pycache__/
-*.pyc
-
-# SDK and model assets currently approved for local use only.
-/prototype/live2d-local/

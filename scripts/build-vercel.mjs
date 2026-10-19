@@ -5,10 +5,9 @@ import { resolve } from 'node:path';
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const output = resolve(root, 'public');
 await mkdir(output, { recursive: true });
-for (const file of ['app.js', 'avatar.js', 'avatar-pose.mjs', 'speech-mouth.js', 'styles.css', 'crew-dashboard.html', 'crew-dashboard.css', 'crew-dashboard.js', 'home.css', 'home.js', 'home-data.mjs']) {
+for (const file of ['app.js', 'styles.css', 'crew-dashboard.html', 'crew-dashboard.css', 'crew-dashboard.js', 'home.css', 'home.js', 'home-data.mjs']) {
   await cp(resolve(root, 'prototype', file), resolve(output, file));
 }
-// live2d-local/ is intentionally excluded: current SDK consent is local use only.
 await cp(resolve(root, 'prototype/assets'), resolve(output, 'assets'), { recursive: true });
 await cp(resolve(root, 'Documents/knowledge'), resolve(output, 'knowledge'), { recursive: true });
 let html = await readFile(resolve(root, 'prototype/index.html'), 'utf8');

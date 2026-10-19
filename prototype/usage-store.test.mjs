@@ -5,29 +5,6 @@ import { createUsageStore, UsageLimitError, usageLimitsFromEnv } from './usage-s
 const alice = 'a'.repeat(64);
 const bob = 'b'.repeat(64);
 
-test('local opt-in removes daily caps while retaining usage records', () => {
-  const limits = usageLimitsFromEnv({ NOOR_LOCAL_UNLIMITED_USAGE: '1' }, { allowUnlimitedLocal: true });
-  for (const policy of Object.values(limits)) {
-    for (const cap of Object.values(policy)) assert.equal(cap, Infinity);
-  }
-  const store = createUsageStore({ limits });
-  for (let i = 0; i < 32; i++) {
-    store.settleClaude(store.reserveClaude(alice, 400_000), 400_000);
-    store.recordOperation(alice, 'speak');
-  }
-  assert.equal(store.totals(alice).visitor.tokens, 12_800_000);
-  assert.equal(store.totals(alice, 'speak').visitor.requests, 32);
-  store.close();
-});
-
-test('production and servers without local permission ignore unlimited flag', () => {
-  const defaults = usageLimitsFromEnv({});
-  assert.deepEqual(usageLimitsFromEnv({ NOOR_LOCAL_UNLIMITED_USAGE: '1' }), defaults);
-  assert.deepEqual(usageLimitsFromEnv({
-    NOOR_LOCAL_UNLIMITED_USAGE: '1', NODE_ENV: 'production',
-  }, { allowUnlimitedLocal: true }), defaults);
-});
-
 test('visitor and overall limits apply across separate conversations', () => {
   const limits = usageLimitsFromEnv({
     NOOR_DAILY_CLAUDE_VISITOR_REQUESTS: '2', NOOR_DAILY_CLAUDE_GLOBAL_REQUESTS: '3',
