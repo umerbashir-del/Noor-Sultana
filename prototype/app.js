@@ -92,6 +92,7 @@ const transcriptReview = document.querySelector('#transcriptReview');
 const vercelPreview = document.documentElement.dataset.vercelPreview === 'true';
 const BrowserSpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 let hostedTranscriptionAvailable = false;
+let hostedTranscriptionChecking = vercelPreview;
 
 if (vercelPreview) {
   arrivalEmailButton.hidden = true;
@@ -99,20 +100,21 @@ if (vercelPreview) {
   checkMicButton.hidden = micDeviceControls.hidden;
   voiceToggle.disabled = true;
   voiceStatus.textContent = 'Checking Chatterbox voice…';
-  if (!BrowserSpeechRecognition) {
+  micStatus.textContent = 'Checking microphone transcription…';
+  void fetch('/api/transcribe').then(async (response) => {
+    const data = await response.json();
+    hostedTranscriptionAvailable = response.ok && data.available === true;
+  }).catch(() => {}).finally(() => {
+    hostedTranscriptionChecking = false;
+    talkButton.disabled = !canTalk();
     const notice = document.querySelector('#speechInputNotice');
-    if (notice) notice.hidden = false;
-    micStatus.textContent = 'Checking microphone transcription…';
-    void fetch('/api/transcribe').then(async (response) => {
-      const data = await response.json();
-      hostedTranscriptionAvailable = response.ok && data.available === true;
-    }).catch(() => {}).finally(() => {
-      talkButton.disabled = !canTalk();
-      micStatus.textContent = hostedTranscriptionAvailable && navigator.mediaDevices?.getUserMedia && window.MediaRecorder
-        ? 'Press Talk to record. Audio is sent to Replicate for transcription; review the words before Send.'
+    if (notice) notice.hidden = !useHostedTranscription() && Boolean(BrowserSpeechRecognition);
+    micStatus.textContent = useHostedTranscription()
+      ? 'Press Talk to record. Audio is sent to Replicate for transcription; review the words before Send.'
+      : BrowserSpeechRecognition
+        ? 'Press Talk to use browser speech recognition; review the words before Send.'
         : 'Microphone transcription is unavailable. You can still type your question.';
-    });
-  }
+  });
 }
 
 const conversation = [];
@@ -623,9 +625,13 @@ function scheduleSessionEnd() {
   sessionTimer = window.setTimeout(() => void endConversation(), Math.max(0, Math.min(idleDeadline, absoluteDeadline) - Date.now()));
 }
 
+function useHostedTranscription() {
+  return hostedTranscriptionAvailable && Boolean(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
+}
+
 function canTalk() {
-  return sessionReady && (!vercelPreview || Boolean(BrowserSpeechRecognition)
-    || (hostedTranscriptionAvailable && Boolean(navigator.mediaDevices?.getUserMedia && window.MediaRecorder)));
+  return sessionReady && (!vercelPreview || (!hostedTranscriptionChecking
+    && (useHostedTranscription() || Boolean(BrowserSpeechRecognition))));
 }
 
 async function startSession(successMessage = 'Conversation ready. End it to clear this screen.') {
@@ -1303,7 +1309,7 @@ function startBrowserRecognition() {
 async function startRecording() {
   if (!sessionReady || recorder?.state === 'recording' || talkButton.disabled) return;
   stopMicCheck();
-  if (vercelPreview && BrowserSpeechRecognition) return startBrowserRecognition();
+  if (vercelPreview && !useHostedTranscription() && BrowserSpeechRecognition) return startBrowserRecognition();
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
     micStatus.textContent = 'This browser cannot record your microphone. You can still type a question.';
     return;

@@ -97,7 +97,7 @@ Hosted streaming reserves the original exact reply and its character allowance o
 ## Talk to Noor
 
 1. Click **Talk** and allow the browser to use your microphone. If more than one microphone is available, select the intended one below the controls. Noor uses automatic gain control while recording; browser echo cancellation and noise suppression are off so quiet speech is less likely to be removed.
-2. Ask a question, then click **Done**. A local faster-whisper `base.en` model transcribes the recording and puts the words in the message box. Recording also stops after 30 seconds.
+2. Ask a question, then click **Done**. Locally, a faster-whisper `base.en` model transcribes the recording. On the deployed site, Chrome and Firefox use hosted Replicate transcription when available; supported browsers fall back to browser speech recognition if hosted recording is unavailable. The words appear in the message box for review. Recording also stops after 30 seconds.
 3. Check and edit the transcript, then click **Send** for Noor to answer and speak. Click **Talk** to record again, or **Stop** to discard the transcript, stop playback, or cancel speech generation. You can still type and send a question normally.
 
 If transcription cannot hear you, click **Check recording** to play back the clip locally. The page does not save this playback clip; it is cleared when you record again or end the conversation.
