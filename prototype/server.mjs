@@ -234,6 +234,7 @@ const voiceJobs = createVoiceJobQueue({
 });
 const speechCache = createSpeechCache();
 const speechRequests = new Map();
+let speechRequestSequence = 0;
 
 function cancelSessionSpeech(sessionId) {
   speechRequests.get(sessionId)?.cancel();
@@ -377,10 +378,22 @@ async function handleSpeak(request, response) {
     throw error;
   }
   const streaming = body.stream === true;
+  const scope = `speech-${++speechRequestSequence}`;
+  const started = Date.now();
+  const trace = kind => logEvent('speech_stream', { scope, kind, durationMs: Date.now() - started });
+  response.setHeader('x-noor-speech-id', scope);
+  const aborted = () => trace('request_aborted');
+  request.once('aborted', aborted);
+  response.once('finish', () => trace('response_finish'));
+  response.once('close', () => {
+    trace(response.writableFinished ? 'response_close_complete' : 'response_close_premature');
+    request.off('aborted', aborted);
+  });
+  trace('start');
   const entry = {
     cancelled: false,
     job: null,
-    cancel() { this.cancelled = true; this.job?.cancel(); this.waitCancel?.(); },
+    cancel() { if (!this.cancelled) trace('cancel'); this.cancelled = true; this.job?.cancel(); this.waitCancel?.(); },
   };
   speechRequests.get(session.id)?.cancel();
   speechRequests.set(session.id, entry);
@@ -434,6 +447,7 @@ async function handleSpeak(request, response) {
     }
     if (streaming) {
       if (!current()) throw new VoiceJobCancelled();
+      trace('terminal_done');
       response.end(JSON.stringify({ done: true }) + '\n');
     }
   } catch (error) {
@@ -441,6 +455,7 @@ async function handleSpeak(request, response) {
     const stopped = entry.cancelled || error instanceof VoiceJobCancelled;
     const message = stopped ? 'Speech was stopped.' : 'Noor’s voice is unavailable. Please try again.';
     if (streaming && response.headersSent) {
+      trace('terminal_error');
       response.end(JSON.stringify({ error: message }) + '\n');
     } else if (stopped) return sendJson(response, 409, { error: message });
     else if (error instanceof VoiceQueueFull) return sendJson(response, 429, { error: error.message });

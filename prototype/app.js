@@ -401,16 +401,25 @@ async function speakReply(text) {
 // Read while playing: the next native audio segment can generate in parallel.
 async function playStreamedSpeech(response, generation, controller) {
   const current = () => generation === voiceGeneration && voiceEnabled && !controller.signal.aborted;
+  const started = Date.now();
+  // Metadata only: observers can distinguish transport completion from playback.
+  const trace = kind => {
+    if (typeof window.dispatchEvent !== 'function' || typeof CustomEvent !== 'function') return;
+    window.dispatchEvent(new CustomEvent('noor-speech-stream', { detail: {
+      kind, generation, requestId: response.headers?.get('x-noor-speech-id') || null,
+      durationMs: Date.now() - started,
+    } }));
+  };
   const reader = response.body?.getReader();
   if (!reader) throw new Error('Voice stream is unavailable.');
-  const cancelStream = () => { void reader.cancel().catch(() => {}); };
+  const cancelStream = () => { trace('abort'); void reader.cancel().catch(() => {}); };
   controller.signal.addEventListener('abort', cancelStream, { once: true });
   const decoder = new TextDecoder();
   let pending = '', count = 0, done = false, playback = Promise.resolve(), playbackError;
   const enqueue = line => {
     const entry = JSON.parse(line);
     if (entry.error) throw new Error(entry.error);
-    if (entry.done === true) { if (!count || done) throw new Error('Invalid voice stream.'); done = true; return; }
+    if (entry.done === true) { if (!count || done) throw new Error('Invalid voice stream.'); done = true; trace('terminal_done'); return; }
     if (done || count >= 3 || entry.index !== count || typeof entry.audio !== 'string'
       || entry.audio.length > 6_700_000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(entry.audio)) throw new Error('Invalid voice segment.');
     const raw = atob(entry.audio);
@@ -430,14 +439,15 @@ async function playStreamedSpeech(response, generation, controller) {
         if (line.trim()) enqueue(line);
       }
       if (pending.length > 6_700_100) throw new Error('Voice segment is too large.');
-      if (part.done) break;
+      if (part.done) { trace('reader_eof'); break; }
     }
     if (pending.trim()) enqueue(pending);
     if (!done) throw new Error('Voice stream ended before the reply finished.');
     await playback;
     if (playbackError) throw playbackError;
-    if (current()) { setAvatarState('idle'); voiceStatus.textContent = 'Voice on'; }
+    if (current()) { trace('playback_complete'); setAvatarState('idle'); voiceStatus.textContent = 'Voice on'; }
   } catch (error) {
+    trace(controller.signal.aborted ? 'cancelled' : 'error');
     controller.abort();
     await reader.cancel().catch(() => {});
     await playback;

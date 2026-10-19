@@ -7,13 +7,13 @@ const section=(start,end)=>source.slice(source.indexOf(start),source.indexOf(end
 const code=section('function stopSpeech()','function clearRecordingPreview()')+'\n'+section('async function speakReply(text)',"voiceAudio.addEventListener('ended'");
 const drain=async()=>{for(let i=0;i<35;i++)await new Promise(resolve=>setImmediate(resolve));};
 function fixture({media=false,blocked=false}={}){
- const starts=[],nodes=[],states=[],mouth=[],urls=new Map();let serial=0,block=blocked;
+ const starts=[],nodes=[],states=[],mouth=[],events=[],urls=new Map();let serial=0,block=blocked;
  const audio={paused:true,ended:false,pause(){this.paused=true;},removeAttribute(){this.src='';},load(){},async play(){if(block){block=false;throw new Error('Autoplay blocked');}this.paused=false;this.ended=false;this.onplaying?.();}};
- const c={AbortController,TextDecoder,Blob,Uint8Array,atob,Date,voiceGeneration:0,voiceEnabled:true,voiceRequest:undefined,voiceSource:undefined,voiceUrl:undefined,voiceRestartAfter:0,chatRequest:undefined,avatarState:'idle',vercelPreview:false,voiceStatus:{textContent:''},playReplyButton:{hidden:true},voiceAudio:audio,URL:{createObjectURL:blob=>{const url='blob:segment-'+serial++;urls.set(url,blob);return url;},revokeObjectURL:url=>urls.delete(url)},speechMouthReady:Promise.resolve(),speechMouth:{stop(){mouth.push('stop');},trackSource(node){mouth.push(node.buffer.id);}},setAvatarState(state){c.avatarState=state;states.push(state);},bindSpeechPlaybackState(){audio.onplaying=()=>c.setAvatarState('speaking');},window:{setTimeout},fetch:undefined};
+ const c={AbortController,CustomEvent:class{constructor(type,options){this.type=type;this.detail=options.detail;}},TextDecoder,Blob,Uint8Array,atob,Date,voiceGeneration:0,voiceEnabled:true,voiceRequest:undefined,voiceSource:undefined,voiceUrl:undefined,voiceRestartAfter:0,chatRequest:undefined,avatarState:'idle',vercelPreview:false,voiceStatus:{textContent:''},playReplyButton:{hidden:true},voiceAudio:audio,URL:{createObjectURL:blob=>{const url='blob:segment-'+serial++;urls.set(url,blob);return url;},revokeObjectURL:url=>urls.delete(url)},speechMouthReady:Promise.resolve(),speechMouth:{stop(){mouth.push('stop');},trackSource(node){mouth.push(node.buffer.id);}},setAvatarState(state){c.avatarState=state;states.push(state);},bindSpeechPlaybackState(){audio.onplaying=()=>c.setAvatarState('speaking');},window:{setTimeout,dispatchEvent:event=>events.push(event.detail)},fetch:undefined};
  c.voiceContext={state:media?'suspended':'running',destination:{},async decodeAudioData(buffer){return{id:new Uint8Array(buffer)[0]};},createBufferSource(){const node={buffer:null,connect(){},disconnect(){this.disconnected=true;},start(){starts.push(this.buffer.id);},stop(){this.stopped=true;}};nodes.push(node);return node;}};
- vm.createContext(c);vm.runInContext(code,c);return{c,starts,nodes,states,mouth,audio,urls};
+ vm.createContext(c);vm.runInContext(code,c);return{c,starts,nodes,states,mouth,events,audio,urls};
 }
-function stream(){let controller,cancelled=false;const body=new ReadableStream({start(c){controller=c;},cancel(){cancelled=true;}});return{response:new Response(body,{headers:{'content-type':'application/x-ndjson'}}),line:entry=>controller.enqueue(new TextEncoder().encode(JSON.stringify(entry)+'\n')),raw:text=>controller.enqueue(new TextEncoder().encode(text)),close:()=>controller.close(),get cancelled(){return cancelled;}};}
+function stream(){let controller,cancelled=false;const body=new ReadableStream({start(c){controller=c;},cancel(){cancelled=true;}});return{response:new Response(body,{headers:{'content-type':'application/x-ndjson'}}),line:entry=>controller.enqueue(new TextEncoder().encode(JSON.stringify(entry)+'\n')),raw:text=>controller.enqueue(new TextEncoder().encode(text)),close:()=>controller.close(),error:error=>controller.error(error),get cancelled(){return cancelled;}};}
 const segment=index=>({index,audio:Buffer.from([index+1]).toString('base64')});
 test('starts first segment before later generation; plays three segments in order',async()=>{
  const f=fixture(),s=stream();f.c.fetch=async()=>s.response;const task=f.c.speakReply('stream fixture');s.line(segment(0));await drain();assert.deepEqual(f.starts,[1]);s.line(segment(1));s.line(segment(2));s.line({done:true});s.close();await drain();assert.deepEqual(f.starts,[1]);f.nodes[0].onended();await drain();assert.deepEqual(f.starts,[1,2]);f.nodes[1].onended();await drain();assert.deepEqual(f.starts,[1,2,3]);f.nodes[2].onended();await task;assert.equal(f.c.avatarState,'idle');assert.deepEqual(f.mouth.filter(x=>x!=='stop'),[1,2,3]);
@@ -46,4 +46,21 @@ test('gaps between audio segments return to idle instead of the thinking pose',a
  s.line(segment(1));s.line({done:true});s.close();await drain();
  assert.equal(f.c.avatarState,'speaking');f.nodes[1].onended();await task;
  assert.equal(f.c.avatarState,'idle');assert(!f.states.includes('thoughtful'));
+});
+
+test('normal completion observes terminal done and reader EOF before playback without aborting the fetch',async()=>{
+ const f=fixture(),s=stream();f.c.fetch=async()=>s.response;const task=f.c.speakReply('normal completion');
+ const controller=f.c.voiceRequest;s.line(segment(0));s.line({done:true});s.close();await drain();
+ assert.deepEqual(f.events.map(event=>event.kind),['terminal_done','reader_eof']);
+ assert.equal(controller.signal.aborted,false);assert.equal(s.cancelled,false);
+ f.nodes[0].onended();await task;assert.deepEqual(f.events.map(event=>event.kind),['terminal_done','reader_eof','playback_complete']);
+ assert.equal(controller.signal.aborted,false);assert.equal(s.cancelled,false);assert.equal(f.c.voiceStatus.textContent,'Voice on');
+});
+test('transport failure after terminal done still fails before EOF and stops queued playback',async()=>{
+ const f=fixture(),s=stream();f.c.fetch=async()=>s.response;const task=f.c.speakReply('broken transport');
+ s.line(segment(0));s.line(segment(1));s.line({done:true});await drain();
+ s.error(new Error('Transport connection failed'));await task;
+ assert.equal(f.c.avatarState,'error');assert.equal(f.nodes[0].stopped,true);assert.deepEqual(f.starts,[1]);
+ assert.deepEqual(f.events.map(event=>event.kind),['terminal_done','error','abort']);
+ assert.equal(f.c.voiceRequest,undefined);assert.notEqual(f.c.voiceStatus.textContent,'Voice on');
 });
