@@ -1,0 +1,10 @@
+{
+	"Version": 3,
+	"FileReferences": {
+		"Moc": "noor-talk-v6.moc3",
+		"Textures": [
+			"noor-talk-v6.2048/texture_00.png"
+		],
+		"DisplayInfo": "noor-talk-v6.cdi3.json"
+	}
+}

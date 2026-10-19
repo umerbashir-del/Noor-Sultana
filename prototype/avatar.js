@@ -1,8 +1,8 @@
-// Native Noor runtime for the authorized local demo. Public builds retain the PNG.
+// The same verified native Noor runtime is bundled in local and deployed builds.
 const wrap = document.querySelector('#noorWrap');
 const canvas = document.querySelector('#noorCanvas');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
-const assetRoot = new URL('./live2d-local/', import.meta.url);
+const assetRoot = new URL('./live2d/noor-v6/', import.meta.url);
 const capabilities = { blink: false, mouth: false, expressions: false };
 let ready = false;
 let error = null;
@@ -47,7 +47,7 @@ window.noorAvatar = Object.freeze({
 function localAsset(name, base = assetRoot) {
   if (typeof name !== 'string' || name.startsWith('/') || name.split('/').includes('..')) throw new Error('Invalid avatar asset');
   const url = new URL(name, base);
-  if (url.origin !== location.origin || !url.pathname.startsWith(assetRoot.pathname)) throw new Error('Avatar asset outside local runtime');
+  if (url.origin !== location.origin || !url.pathname.startsWith(assetRoot.pathname)) throw new Error('Avatar asset outside bundled runtime');
   return url;
 }
 
@@ -162,17 +162,17 @@ function frame(now) {
 }
 
 async function start() {
-  if (!wrap || !canvas || document.documentElement.dataset.vercelPreview === 'true' || !['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname)) return;
+  if (!wrap || !canvas) return;
   wrap.dataset.avatar = 'loading';
   try {
     const manifest = JSON.parse(new TextDecoder().decode(await bytes(localAsset('manifest.json'))));
     if (manifest.renderAdapter !== null) throw new Error('Only the verified native rig is supported');
     await loadCore();
     const [coreFramework, userModel, matrixModule, shaderModule] = await Promise.all([
-      import('./live2d-local/framework/live2dcubismframework.js'),
-      import('./live2d-local/framework/model/cubismusermodel.js'),
-      import('./live2d-local/framework/math/cubismmatrix44.js'),
-      import('./live2d-local/framework/rendering/cubismshader_webgl.js'),
+      import('./live2d/noor-v6/framework/live2dcubismframework.js'),
+      import('./live2d/noor-v6/framework/model/cubismusermodel.js'),
+      import('./live2d/noor-v6/framework/math/cubismmatrix44.js'),
+      import('./live2d/noor-v6/framework/rendering/cubismshader_webgl.js'),
     ]);
     framework = coreFramework.CubismFramework;
     Matrix = matrixModule.CubismMatrix44;

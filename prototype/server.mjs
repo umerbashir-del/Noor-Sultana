@@ -87,7 +87,15 @@ const publicFiles = new Set([
   'assets/noor-thinking.png',
 ]);
 
-// Local-use SDK consent does not authorize public serving or preview builds.
+// The approved, fixed V6 application runtime is public on local and hosted builds.
+// Historical exports and the authoring SDK remain in the protected local tree.
+const bundledAvatar = JSON.parse(await readFile(resolve(root, 'live2d/noor-v6/manifest.json'), 'utf8'));
+publicFiles.add('live2d/noor-v6/manifest.json');
+for (const name of bundledAvatar.files) {
+  if (typeof name === 'string' && /^[a-zA-Z0-9_./-]+$/.test(name) && !name.startsWith('/') && !name.split('/').some(part => !part || part === '.' || part === '..')) publicFiles.add(`live2d/noor-v6/${name}`);
+}
+
+// Historical local-only exports are not part of the public bundle.
 const localAvatarEnabled = !config.production && ['127.0.0.1', 'localhost', '::1'].includes(config.host);
 // A loopback bind alone does not identify requests forwarded by a tunnel.
 function localAvatarRequestAllowed(request) {
@@ -830,7 +838,7 @@ async function serveStatic(pathname, response, request) {
       'content-type': mimeTypes[extname(file)] || 'application/octet-stream',
       'x-content-type-options': 'nosniff',
       'cache-control': 'no-cache',
-      'content-security-policy': "default-src 'self'; img-src 'self'; media-src 'self' blob:; style-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+      'content-security-policy': "default-src 'self'; img-src 'self'; media-src 'self' blob:; style-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
     });
     response.end(data);
   } catch {
