@@ -6,10 +6,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-venv python3-pip ffmpeg libsndfile1 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY prototype/requirements-voice.txt /tmp/requirements-voice.txt
+COPY prototype/requirements-voice.txt prototype/requirements-voice-nodeps.txt /tmp/
 RUN python3 -m venv /opt/noor-venv \
     && /opt/noor-venv/bin/pip install --no-cache-dir --upgrade pip \
-    && /opt/noor-venv/bin/pip install --no-cache-dir -r /tmp/requirements-voice.txt
+    && /opt/noor-venv/bin/pip install --no-cache-dir -r /tmp/requirements-voice.txt \
+    && /opt/noor-venv/bin/pip install --no-cache-dir --no-deps -r /tmp/requirements-voice-nodeps.txt
 
 WORKDIR /app
 COPY prototype /app/prototype

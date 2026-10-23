@@ -1,12 +1,29 @@
-# Matches the working local environment. Validate CPU/GPU performance on the
-# chosen Linux host before accepting public traffic.
-chatterbox-tts==0.1.7
+# Patched local voice stack, verified 2026-10-23 end to end (Chatterbox Turbo speech through
+# voice_worker.py and faster-whisper transcription through asr_worker.py) on Python 3.12.
+# Install this file first, then requirements-voice-nodeps.txt with --no-deps (see that file for why).
+# Validate CPU/GPU performance on the chosen Linux host before accepting public traffic.
+torch==2.14.1
+transformers==5.20.2
+diffusers==0.41.0
+pillow==13.0.0
+numpy>=1.24,<2
+librosa==0.11.0
+resemble-perth==1.0.1
+conformer==0.3.2
+safetensors==0.8.0
+spacy-pkuseg==1.0.1
+pykakasi==2.3.0
+pyloudnorm==0.2.0
+omegaconf==2.4.0
+onnx==1.23.2
+einops==0.8.2
 faster-whisper==1.2.1
-torch==2.6.0
-torchaudio==2.6.0
+# faster-whisper 1.2.1 calls av.open(metadata_errors=...), which PyAV 19 removed.
+av==18.1.0
 soundfile==0.14.0
-# Perth imports pkg_resources, which newer setuptools releases removed.
-setuptools==80.9.0
+# Perth imports pkg_resources, which setuptools 82+ removed. The advisory still open in 81.0.0
+# (GHSA-h35f-9h28-mq5c) only affects building sdists from MANIFEST.in; the voice runtime never does that.
+setuptools==81.0.0
 
 # Keep the local speech runtime on the incident-patched CA bundle.
 certifi>=2026.10.19

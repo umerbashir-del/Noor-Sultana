@@ -19,6 +19,10 @@ def run_worker(requests, reference='', fail_prepare=False):
     class Wave:
         def cpu(self):
             return self
+        def squeeze(self, dim):
+            return self
+        def numpy(self):
+            return self
     class Model:
         sr = 24000
         def prepare_conditionals(self, path, **kwargs):
@@ -36,7 +40,7 @@ def run_worker(requests, reference='', fail_prepare=False):
             return Model()
     modules = {
         'torch': types.SimpleNamespace(cuda=types.SimpleNamespace(is_available=lambda: False), inference_mode=contextlib.nullcontext),
-        'torchaudio': types.SimpleNamespace(save=lambda output, wave, rate, **kwargs: output.write(b'RIFF-fake-wav')),
+        'soundfile': types.SimpleNamespace(write=lambda output, data, rate, **kwargs: output.write(b'RIFF-fake-wav')),
         'chatterbox': types.ModuleType('chatterbox'),
         'chatterbox.tts_turbo': types.SimpleNamespace(ChatterboxTurboTTS=Turbo),
     }

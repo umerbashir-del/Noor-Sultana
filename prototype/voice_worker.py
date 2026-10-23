@@ -44,14 +44,15 @@ def load_model():
 
 def speak(text):
     with redirect_stdout(sys.stderr):
+        import soundfile as sf
         import torch
-        import torchaudio as ta
 
         loaded_model = load_model()
         with torch.inference_mode():
             waveform = loaded_model.generate(text)
         output = io.BytesIO()
-        ta.save(output, waveform.cpu(), loaded_model.sr, format="wav")
+        # torchaudio >= 2.9 needs the separate torchcodec package to save; soundfile writes the same 32-bit float WAV.
+        sf.write(output, waveform.cpu().squeeze(0).numpy(), loaded_model.sr, format="WAV", subtype="FLOAT")
     return base64.b64encode(output.getvalue()).decode("ascii")
 
 

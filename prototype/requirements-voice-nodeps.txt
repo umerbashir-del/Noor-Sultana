@@ -1,0 +1,8 @@
+# Install with `pip install --no-deps -r requirements-voice-nodeps.txt` after requirements-voice.txt.
+# chatterbox-tts 0.1.7 (the latest release) hard-pins torch==2.6.0, torchaudio==2.6.0,
+# transformers==5.2.0, diffusers==0.29.0 and gradio==6.8.0, all of which have published security
+# advisories. Installing these packages without their own pins lets requirements-voice.txt supply
+# patched versions; gradio (Chatterbox's demo web UI) is not needed by Noor and is left out.
+chatterbox-tts==0.1.7
+s3tokenizer==0.3.0
+torchaudio==2.11.0
