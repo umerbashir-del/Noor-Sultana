@@ -1,5 +1,9 @@
 # Noor Sultana
 
+[![Watch the 60-second Noor demo](media/noor-demo-poster.jpg)](media/noor-demo.mp4)
+
+**[▶ Watch the 60-second demo](media/noor-demo.mp4)**: Noor answers four passenger questions on the seat-back screen of a fictional flight (CL 204, New York JFK → Tokyo Haneda). Every answer shown is the real local app; flight details and the crew request are demo data.
+
 A visual-novel-style in-flight assistant demo, with original character artwork and product notes.
 
 ## Assets
