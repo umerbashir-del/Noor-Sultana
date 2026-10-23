@@ -1,9 +1,12 @@
 # Build from the Noor Sultana folder so the prototype and knowledge pages are
 # available at the same relative paths used by the local app.
+# No system ffmpeg: transcription decodes through PyAV's bundled FFmpeg and speech is
+# written with libsndfile. Bookworm stays (Debian LTS) because trixie's Python 3.13
+# cannot install the tested numpy<2 voice pins.
 FROM node:22.23.4-bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-venv python3-pip ffmpeg libsndfile1 \
+    python3 python3-venv python3-pip libsndfile1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY prototype/requirements-voice.txt prototype/requirements-voice-nodeps.txt /tmp/
