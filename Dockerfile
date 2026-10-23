@@ -1,6 +1,6 @@
 # Build from the Noor Sultana folder so the prototype and knowledge pages are
 # available at the same relative paths used by the local app.
-FROM node:22-bookworm-slim
+FROM node:22.23.4-bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-venv python3-pip ffmpeg libsndfile1 \

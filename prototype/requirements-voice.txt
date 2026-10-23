@@ -7,3 +7,6 @@ torchaudio==2.6.0
 soundfile==0.14.0
 # Perth imports pkg_resources, which newer setuptools releases removed.
 setuptools==80.9.0
+
+# Keep the local speech runtime on the incident-patched CA bundle.
+certifi>=2026.10.19
