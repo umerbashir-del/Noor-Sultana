@@ -1,3 +1,4 @@
+import { continuousIdleAt } from './avatar-motion.mjs';
 // State targets drive verified native Cubism keyforms; this module never edits vertices.
 const states = ['welcoming', 'thoughtful', 'listening', 'speaking', 'idle', 'error'];
 const allowed = new Set([
@@ -7,6 +8,7 @@ const allowed = new Set([
   'ParamEyeBallX', 'ParamEyeBallY',
   'ParamBodyAngleX', 'ParamBodyAngleY', 'ParamBodyAngleZ', 'ParamBreath',
   'ParamArmLGesture',
+  'ParamEyeLSmile', 'ParamEyeRSmile', 'ParamMouthForm',
 ]);
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const smooth = value => value * value * (3 - 2 * value);
@@ -78,7 +80,7 @@ export function createNativePoseController({ model, manifest, mocSHA256 }) {
   const rejected = Object.create(null);
   const entries = [];
   let reason = null;
-  if (manifest?.version !== 'noor-v6' || configuration?.verified !== true) reason = 'Native V6 pose rig is not verified';
+  if (!['noor-v6', 'noor-v7'].includes(manifest?.version) || configuration?.verified !== true) reason = 'Native pose rig is not verified';
   else if (!/^[a-f0-9]{64}$/.test(configuration.mocSHA256 ?? '') || configuration.mocSHA256 !== mocSHA256) reason = 'Verified pose identity does not match the loaded moc';
   else if (!configuration.parameters || typeof configuration.parameters !== 'object' || Array.isArray(configuration.parameters)) reason = 'Verified pose parameter settings are missing';
   if (!reason) {
@@ -130,6 +132,9 @@ export function createNativePoseController({ model, manifest, mocSHA256 }) {
   let starts = new Map(values);
   let speakingEntry = -1;
   let suspendedState = null;
+  const continuous = manifest?.version === 'noor-v7' && configuration?.continuousIdle === true;
+  let activeTime = 0, lastTime = null;
+  let stateOffsets = new Map(verified.map(entry => [entry.id, entry.neutral]));
 
   function reset() {
     speakingEntry = -1;
@@ -137,6 +142,9 @@ export function createNativePoseController({ model, manifest, mocSHA256 }) {
     state = null;
     stateStart = null;
     idleStart = null;
+    activeTime = 0;
+    lastTime = null;
+    stateOffsets = new Map(verified.map(entry => [entry.id, entry.neutral]));
     for (const entry of verified) {
       values.set(entry.id, entry.neutral);
       model.setParameterValueByIndex(entry.index, entry.neutral);
@@ -149,9 +157,10 @@ export function createNativePoseController({ model, manifest, mocSHA256 }) {
     get rejected() { return { ...rejected }; },
     get reason() { return reason; },
     get hasStateTargets() { return verified.some(entry => states.some(state => entry.targets[state] !== entry.neutral)); },
-    get hasIdleMotion() { return verified.some(entry => entry.idleAmplitude > 0); },
+    get hasIdleMotion() { return continuous || verified.some(entry => entry.idleAmplitude > 0); },
     reset,
     suspend() {
+      lastTime = null;
       // Keep the last rendered values; restart easing from them on the next frame.
       suspendedState = state;
       state = null;
@@ -162,6 +171,23 @@ export function createNativePoseController({ model, manifest, mocSHA256 }) {
       if (!Number.isFinite(now)) return;
       if (reducedMotion) { reset(); return; }
       const canonical = states.includes(nextState) ? nextState : 'idle';
+      if (continuous) {
+        const delta = lastTime === null ? 0 : clamp(now - lastTime, 0, 100);
+        lastTime = now;
+        activeTime += delta;
+        const motion = continuousIdleAt(activeTime / 1000);
+        const startup = smooth(clamp(activeTime / transitionMs, 0, 1));
+        const blend = 1 - Math.exp(-delta / (transitionMs / 4));
+        for (const entry of verified) {
+          const before = stateOffsets.get(entry.id);
+          const offset = before + (entry.targets[canonical] - before) * blend;
+          stateOffsets.set(entry.id, offset);
+          const value = clamp(offset + (motion[entry.id] ?? 0) * startup, entry.min, entry.max);
+          values.set(entry.id, value);
+          model.setParameterValueByIndex(entry.index, value);
+        }
+        return;
+      }
       if (state !== canonical) {
         if (canonical === 'speaking' && suspendedState !== 'speaking') speakingEntry++;
         suspendedState = null;

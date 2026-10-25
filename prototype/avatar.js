@@ -1,9 +1,10 @@
-// The same verified native Noor runtime is bundled in local and deployed builds.
+import { createSecondaryMotion } from './avatar-motion.mjs';
+// The same verified native Noor runtime is bundled in local and built output.
 const wrap = document.querySelector('#noorWrap');
 const canvas = document.querySelector('#noorCanvas');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
-const assetRoot = new URL('./live2d/noor-v6/', import.meta.url);
-const capabilities = { blink: false, mouth: false, expressions: false };
+const assetRoot = new URL('./live2d/noor-v7/', import.meta.url);
+const capabilities = { blink: false, mouth: false, expressions: false, physics: false, idle: false };
 let ready = false;
 let error = null;
 let state = 'welcoming';
@@ -17,6 +18,8 @@ let Matrix;
 let eyeIds;
 let mouthId;
 let poseController;
+let physics;
+let secondaryMotion;
 let frameId = 0;
 let blinkStart = -1;
 let nextBlink = 0;
@@ -28,11 +31,17 @@ window.noorAvatar = Object.freeze({
   get error() { return error; },
   get state() { return state; },
   get capabilities() { return { ...capabilities }; },
+  // Read-only diagnostics; sampled by integration checks, never in the draw loop.
+  get parameterValues() {
+    if (!model || !framework) return {};
+    const names = [...poseController?.parameterIds ?? [], 'ParamEyeLOpen', 'ParamEyeROpen', 'ParamMouthOpenY', 'ParamHairFront', 'ParamHairBack', 'ParamScarfSway'];
+    return Object.fromEntries(names.map(name => [name, model.getParameterValueById(framework.getIdManager().getId(name))]));
+  },
   get nativePose() {
     return {
       parameterIds: poseController?.parameterIds ?? [],
       rejected: poseController?.rejected ?? {},
-      reason: poseController ? poseController.reason : 'Native V6 pose rig is not active',
+      reason: poseController ? poseController.reason : 'Native pose rig is not active',
     };
   },
   setMouthOpen(value) { mouthOpen = clamp(value); },
@@ -106,6 +115,7 @@ function dropPose(reason) {
   try { poseController?.reset(); } catch { /* Optional poses must not disable blink or speech. */ }
   poseController = undefined;
   capabilities.expressions = false;
+  capabilities.idle = false;
   if (reason) console.warn('[Noor avatar] Native poses disabled:', reason);
 }
 
@@ -114,6 +124,8 @@ function fail(reason) {
   error = reason instanceof Error ? reason.message : String(reason);
   capabilities.blink = false;
   capabilities.mouth = false;
+  capabilities.physics = false;
+  capabilities.idle = false;
   dropPose();
   mouthOpen = 0;
   cancelAnimationFrame(frameId);
@@ -139,10 +151,10 @@ function draw(now) {
     open = elapsed < 90 ? 1 - smooth(Math.min(1, elapsed / 90)) : elapsed < 145 ? 0 : smooth(Math.min(1, (elapsed - 145) / 125));
     if (elapsed >= 270) blinkStart = -1;
   }
-  try { poseController?.update(now, state, reducedMotion.matches); }
-  catch (reason) { dropPose(reason); }
+  poseController?.update(now, state, reducedMotion.matches);
   for (const id of eyeIds) model.setParameterValueById(id, open);
   if (capabilities.mouth) model.setParameterValueById(mouthId, mouthOpen);
+  secondaryMotion?.update(now, reducedMotion.matches);
   model.update();
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.viewport(0, 0, canvas.width, canvas.height);
@@ -166,13 +178,14 @@ async function start() {
   wrap.dataset.avatar = 'loading';
   try {
     const manifest = JSON.parse(new TextDecoder().decode(await bytes(localAsset('manifest.json'))));
+    if (manifest.version !== 'noor-v7') throw new Error('Approved runtime version unavailable');
     if (manifest.renderAdapter !== null) throw new Error('Only the verified native rig is supported');
     await loadCore();
     const [coreFramework, userModel, matrixModule, shaderModule] = await Promise.all([
-      import('./live2d/noor-v6/framework/live2dcubismframework.js'),
-      import('./live2d/noor-v6/framework/model/cubismusermodel.js'),
-      import('./live2d/noor-v6/framework/math/cubismmatrix44.js'),
-      import('./live2d/noor-v6/framework/rendering/cubismshader_webgl.js'),
+      import('./live2d/noor-v7/framework/live2dcubismframework.js'),
+      import('./live2d/noor-v7/framework/model/cubismusermodel.js'),
+      import('./live2d/noor-v7/framework/math/cubismmatrix44.js'),
+      import('./live2d/noor-v7/framework/rendering/cubismshader_webgl.js'),
     ]);
     framework = coreFramework.CubismFramework;
     Matrix = matrixModule.CubismMatrix44;
@@ -232,14 +245,14 @@ async function start() {
     for (const eye of eyeIds) model.setParameterValueById(eye, 1);
     mouthId = ids.has('ParamMouthOpenY') ? id('ParamMouthOpenY') : null;
     capabilities.mouth = manifest.mouthRigVerified === true && hasNativeMouth();
-    // V5 never requests the optional pose helper. A failed pose gate preserves blink/mouth.
-    if (manifest.version === 'noor-v6' && manifest.nativePose?.verified === true) {
+    if (manifest.version === 'noor-v7' && manifest.nativePose?.verified === true) {
       try {
         const digest = await crypto.subtle.digest('SHA-256', mocBytes);
         const mocSHA256 = Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, '0')).join('');
         const { createNativePoseController } = await import('./avatar-pose.mjs');
         poseController = createNativePoseController({ model, manifest, mocSHA256 });
         capabilities.expressions = poseController.hasStateTargets;
+        capabilities.idle = poseController.hasIdleMotion;
         if (poseController.reason || Object.keys(poseController.rejected).length) {
           console.warn('[Noor avatar] Native pose gate:', poseController.reason, poseController.rejected);
         }
@@ -247,6 +260,26 @@ async function start() {
         console.warn('[Noor avatar] Native poses unavailable:', reason);
       }
     }
+    if (!capabilities.mouth || !capabilities.expressions || !capabilities.idle || poseController.reason || Object.keys(poseController.rejected).length) {
+      throw new Error('Approved native model controls did not pass verification');
+    }
+    if (!setting.FileReferences.Physics || manifest.physics?.verified !== true) throw new Error('Approved physics unavailable');
+    const physicsUrl = localAsset(setting.FileReferences.Physics, modelUrl);
+    const expectedPath = physicsUrl.pathname.slice(assetRoot.pathname.length);
+    if (manifest.physics.file !== expectedPath) throw new Error('Physics identity path mismatch');
+    const physicsBytes = await bytes(physicsUrl);
+    const physicsDigest = await crypto.subtle.digest('SHA-256', physicsBytes);
+    const physicsHash = Array.from(new Uint8Array(physicsDigest), value => value.toString(16).padStart(2, '0')).join('');
+    if (manifest.sha256[expectedPath] !== physicsHash) throw new Error('Physics integrity mismatch');
+    const outputs = ['ParamHairFront', 'ParamHairBack', 'ParamScarfSway'];
+    const physicsSetting = JSON.parse(new TextDecoder().decode(physicsBytes));
+    const actualOutputs = physicsSetting.PhysicsSettings.flatMap(setting => setting.Output.map(output => output.Destination.Id));
+    if (actualOutputs.length !== outputs.length || outputs.some(name => !ids.has(name) || !actualOutputs.includes(name))) throw new Error('Physics output ownership mismatch');
+    const { CubismPhysics } = await import('./live2d/noor-v7/framework/physics/cubismphysics.js');
+    physics = CubismPhysics.create(physicsBytes, physicsBytes.byteLength);
+    if (!physics) throw new Error('Native physics initialization failed');
+    secondaryMotion = createSecondaryMotion({ model, physics, outputIds: outputs.map(id) });
+    capabilities.physics = true;
     user.getModelMatrix().setHeight(1.9);
     user.getModelMatrix().setPosition(0, 0);
     canvas.hidden = false;
@@ -266,17 +299,20 @@ async function start() {
 
 document.addEventListener('visibilitychange', () => {
   poseController?.suspend();
+  secondaryMotion?.suspend();
   mouthOpen = 0;
   blinkStart = -1;
   nextBlink = performance.now() + 3500;
 });
 window.addEventListener('pagehide', event => {
+  secondaryMotion?.suspend();
   if (event.persisted) poseController?.suspend();
   else dropPose();
   if (event.persisted) { mouthOpen = 0; return; }
   cancelAnimationFrame(frameId);
   mouthOpen = 0;
   for (const texture of textures) gl?.deleteTexture(texture);
+  physics?.release();
   user?.release();
 });
 start();

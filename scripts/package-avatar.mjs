@@ -7,13 +7,13 @@ import { dirname, posix, resolve } from 'node:path';
 export async function packageAvatar(source, destination) {
   const manifestBytes = await readFile(resolve(source, 'manifest.json'));
   const manifest = JSON.parse(manifestBytes);
-  if (manifest.version !== 'noor-v6' || manifest.renderAdapter !== null || !Array.isArray(manifest.files) || !manifest.files.length) {
+  if (!['noor-v6', 'noor-v7'].includes(manifest.version) || manifest.renderAdapter !== null || !Array.isArray(manifest.files) || !manifest.files.length) {
     throw new Error('Missing verified Noor runtime manifest');
   }
   const names = new Set(manifest.files);
   if (names.size !== manifest.files.length) throw new Error('Duplicate avatar asset');
   for (const name of names) {
-    if (typeof name !== 'string' || !/^(?:core|framework|shaders|models\/noor-v6|licenses)\/[a-zA-Z0-9_./-]+$/.test(name) || name.split('/').some(part => !part || part === '.' || part === '..') || !/\.(?:js|frag|vert|moc3|png|json|md|txt)$/.test(name)) {
+    if (typeof name !== 'string' || !/^(?:core|framework|shaders|models\/noor-v[67]|licenses)\/[a-zA-Z0-9_./-]+$/.test(name) || name.split('/').some(part => !part || part === '.' || part === '..') || !/\.(?:js|frag|vert|moc3|png|json|md|txt)$/.test(name)) {
       throw new Error('Invalid bundled avatar path');
     }
     // Reject symlinks in every component, not only the final file.
@@ -38,9 +38,10 @@ export async function packageAvatar(source, destination) {
   }
   const setting = JSON.parse(await readFile(resolve(source, manifest.model), 'utf8'));
   const modelDirectory = dirname(manifest.model);
-  for (const name of [setting.FileReferences?.Moc, ...setting.FileReferences?.Textures ?? [], setting.FileReferences?.DisplayInfo]) {
+  for (const name of [setting.FileReferences?.Moc, ...setting.FileReferences?.Textures ?? [], setting.FileReferences?.DisplayInfo, ...(manifest.version === 'noor-v7' ? [setting.FileReferences?.Physics] : [])]) {
     if (typeof name !== 'string' || name.includes('..') || !names.has(`${modelDirectory}/${name}`)) throw new Error('Incomplete avatar model');
   }
+  if (manifest.version === 'noor-v7' && (manifest.physics?.verified !== true || manifest.physics.file !== `${modelDirectory}/${setting.FileReferences.Physics}`)) throw new Error('Incomplete avatar physics');
   await rm(destination, { recursive: true, force: true });
   await mkdir(destination, { recursive: true });
   for (const name of ['manifest.json', ...names]) {

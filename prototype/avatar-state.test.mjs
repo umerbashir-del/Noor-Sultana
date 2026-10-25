@@ -4,13 +4,14 @@ import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 const source=await readFile(new URL('./app.js',import.meta.url),'utf8');
 const section=(start,end)=>source.slice(source.indexOf(start),source.indexOf(end,source.indexOf(start)));
-const code=[section('function stopSpeech()','function clearRecordingPreview()'),section('async function speakReply(text)',"voiceAudio.addEventListener('ended'"),section('function setAvatarState(state)','function animateNoor()'),section('function finishRecording(discard = false)','function interruptNoor()'),section('function reviewTranscript(transcript)','function startBrowserRecognition()'),section('function startBrowserRecognition()','async function startRecording()'),section('async function startSession(', 'function clearConversationDisplay()')].join('\n');
+const code=[section('function setDictationRecording(active)', 'function finishRecording(discard'),section('function stopSpeech()','function clearRecordingPreview()'),section('async function speakReply(text)',"voiceAudio.addEventListener('ended'"),section('function setAvatarState(state)','function animateNoor()'),section('function finishRecording(discard = false)','function interruptNoor()'),section('function reviewTranscript(transcript)','function startBrowserRecognition()'),section('function startBrowserRecognition()','async function startRecording()'),section('async function startSession(', 'function clearConversationDisplay()')].join('\n');
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return{promise,resolve,reject};};
 const drain=async()=>{for(let i=0;i<16;i++)await Promise.resolve();};
 function fixture(){
  const states=[];
- const c={AbortController,Date,URL:{createObjectURL:()=> 'blob:fixture',revokeObjectURL(){}},window:{noorAvatar:{setState:s=>states.push(s)},location:{protocol:'http:'},setTimeout:()=>1},clearTimeout(){},voiceGeneration:0,voiceEnabled:true,voiceAvailable:true,voiceRequest:undefined,voiceSource:undefined,voiceContext:undefined,voiceUrl:undefined,chatRequest:undefined,voiceRestartAfter:0,vercelPreview:false,speechMouthReady:Promise.resolve(),speechMouth:{stop(){},trackSource(){}},voiceStatus:{textContent:''},playReplyButton:{hidden:true},voiceAudio:{paused:true,pause(){this.paused=true;},removeAttribute(){},load(){},play(){this.paused=false;return Promise.resolve();}},avatarState:'welcoming',noor:{dataset:{}},fetch:async()=>({ok:true,blob:async()=>({arrayBuffer:async()=>new ArrayBuffer(1)})}),input:{value:'',maxLength:1000,focus(){}},micStatus:{},micSequence:0,discardRecording:false,browserRecognition:undefined,browserRecognitionDraft:undefined,recorder:undefined,sessionReady:true,recordTimeout:undefined,sessionTimer:undefined,transcriptReview:{},reviewingTranscript:false,interruptNoor(){c.stopSpeech();c.setAvatarState('idle');},clearTranscriptReview(){},clearRecordingPreview(){},setVoiceEnabled(){},canTalk:()=>true,scheduleSessionEnd(){},sessionStatus:{}};
+ const c={selectedJourney:{id:'tokyo'},encodeURIComponent,dictationIndicator:{hidden:true},AbortController,Date,URL:{createObjectURL:()=> 'blob:fixture',revokeObjectURL(){}},window:{noorAvatar:{setState:s=>states.push(s)},location:{protocol:'http:'},setTimeout:()=>1},clearTimeout(){},voiceGeneration:0,voiceEnabled:true,voiceAvailable:true,voiceRequest:undefined,voiceSource:undefined,voiceContext:undefined,voiceUrl:undefined,chatRequest:undefined,voiceRestartAfter:0,vercelPreview:false,speechMouthReady:Promise.resolve(),speechMouth:{stop(){},trackSource(){}},voiceStatus:{textContent:''},playReplyButton:{hidden:true},voiceAudio:{paused:true,pause(){this.paused=true;},removeAttribute(){},load(){},play(){this.paused=false;return Promise.resolve();}},avatarState:'welcoming',noor:{dataset:{}},fetch:async()=>({ok:true,blob:async()=>({arrayBuffer:async()=>new ArrayBuffer(1)})}),input:{value:'',maxLength:1000,focus(){}},micStatus:{},micSequence:0,discardRecording:false,browserRecognition:undefined,browserRecognitionDraft:undefined,recorder:undefined,sessionReady:true,recordTimeout:undefined,sessionTimer:undefined,transcriptReview:{},reviewingTranscript:false,interruptNoor(){c.stopSpeech();c.setAvatarState('idle');},clearTranscriptReview(){},clearRecordingPreview(){},setVoiceEnabled(){},canTalk:()=>true,scheduleSessionEnd(){},sessionStatus:{}};
  for(const name of ['sendButton','doneButton','talkButton','boardingTimeButton','baggageGuidanceButton','weatherAvailabilityButton','arrivalNoteButton','weatherNowButton','weatherArrivalButton','otherWeatherButton','arrivalEmailButton','endConversationButton'])c[name]={};
+ c.talkButton.setAttribute=function(k,v){this[k]=v;};
  c.BrowserSpeechRecognition=class{start(){}stop(){}abort(){}};
  vm.createContext(c);vm.runInContext(code,c);return{c,states};
 }
@@ -76,4 +77,12 @@ test('enabling voice does not replay history or replace the current chat pose',(
  assert.equal(requests,0);assert.equal(c.avatarState,'idle');assert.equal(c.noor.dataset.pose,'welcome');
  c.setAvatarState('thoughtful');c.setVoiceEnabled(true);
  assert.equal(requests,0);assert.equal(c.avatarState,'thoughtful');
+});
+
+test('browser recognition enables the same finish control and releases it on completion', () => {
+ const {c}=fixture(); c.startBrowserRecognition(); const recognition=c.browserRecognition;
+ assert.equal(c.talkButton.disabled,true);
+ recognition.onstart(); assert.equal(c.talkButton.disabled,false); assert.equal(c.talkButton['aria-pressed'],'true'); assert.equal(c.dictationIndicator.hidden,false);
+ c.finishRecording(); assert.equal(c.dictationIndicator.hidden,true); assert.equal(c.input.hidden,false);
+ recognition.onend(); assert.equal(c.talkButton.disabled,false); assert.equal(c.talkButton['aria-label'],'Dictate a message');
 });
