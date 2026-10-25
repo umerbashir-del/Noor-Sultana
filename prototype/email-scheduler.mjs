@@ -1,3 +1,4 @@
+import { getJourney } from './journeys.mjs';
 import { migrateDatabase } from './database-migrations.mjs';
 import { createHash, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
@@ -126,10 +127,10 @@ export function createEmailScheduler({ dbPath = ':memory:', provider, clock = Da
     return { verified: true, email: challenge.email };
   }
 
-  function review(sessionId, challengeId, scheduledAt) {
+  function review(sessionId, challengeId, scheduledAt, journeyId) {
     const challenge = checkedChallenge(sessionId, challengeId, true);
     const time = checkedSchedule(scheduledAt);
-    const draft = createArrivalEmailDraft();
+    const draft = createArrivalEmailDraft(getJourney(journeyId));
     return {
       to: challenge.email, subject: draft.subject, body: draft.body,
       scheduledAt: new Date(time).toISOString(), attachments: [],
@@ -137,7 +138,7 @@ export function createEmailScheduler({ dbPath = ':memory:', provider, clock = Da
     };
   }
 
-  function schedule(sessionId, challengeId, scheduledAt, reviewHash) {
+  function schedule(sessionId, challengeId, scheduledAt, reviewHash, journeyId) {
     if (!provider) throw new EmailFlowError('Email delivery is not configured yet.', 503);
     checkedChallenge(sessionId, challengeId, true);
     const prior = jobByVerification.get(challengeId);
@@ -147,7 +148,7 @@ export function createEmailScheduler({ dbPath = ':memory:', provider, clock = Da
       }
       return publicJob(prior);
     }
-    const preview = review(sessionId, challengeId, scheduledAt);
+    const preview = review(sessionId, challengeId, scheduledAt, journeyId);
     if (typeof reviewHash !== 'string' || reviewHash !== preview.reviewHash) {
       throw new EmailFlowError('The draft or send time changed. Review it again.', 409);
     }

@@ -1,3 +1,4 @@
+import { getJourney } from './journeys.mjs';
 const locations = Object.freeze({
   hnd: { name: 'Tokyo Haneda area', latitude: 35.55, longitude: 139.78, timeZone: 'Asia/Tokyo' },
   jfk: { name: 'New York JFK area', latitude: 40.64, longitude: -73.78, timeZone: 'America/New_York' },
@@ -131,8 +132,15 @@ export async function getWeatherForPlace(place, { fetchImpl = fetch, now = Date.
   }, 'now', { fetchImpl, now });
 }
 
-async function forecastAt(location, when, { fetchImpl, now }) {
-  if (when === 'arrival' && (sampleArrival <= now || sampleArrival - now > 7 * 86_400_000)) {
+export async function getJourneyWeather(journeyId, when = 'now', { origin = false, fetchImpl = fetch, now = Date.now() } = {}) {
+  const journey = getJourney(journeyId);
+  if (!journey || !['now', 'arrival'].includes(when) || (origin && when === 'arrival')) throw new TypeError('Unsupported weather lookup.');
+  const airport = origin ? journey.origin : journey;
+  return forecastAt({ name: (origin ? journey.origin.name : journey.airportName) + ' area', latitude: airport.latitude, longitude: airport.longitude, timeZone: airport.timeZone }, when, { fetchImpl, now, arrivalAt: Date.parse(journey.arrivalAt) });
+}
+
+async function forecastAt(location, when, { fetchImpl, now, arrivalAt = sampleArrival }) {
+  if (when === 'arrival' && (arrivalAt <= now || arrivalAt - now > 7 * 86_400_000)) {
     throw new WeatherUnavailable('The sample arrival is in the past or outside the forecast window.');
   }
 
@@ -180,11 +188,11 @@ async function forecastAt(location, when, { fetchImpl, now }) {
       || !Array.isArray(hourly.weather_code) || !Array.isArray(hourly.precipitation_probability)) {
       throw new WeatherUnavailable('Arrival forecast is incomplete.');
     }
-    const index = hourly.time.findIndex((hour) => hour * 1000 >= sampleArrival);
+    const index = hourly.time.findIndex((hour) => hour * 1000 >= arrivalAt);
     const candidates = [index - 1, index].filter((i) => i >= 0 && i < hourly.time.length);
-    const closest = candidates.sort((a, b) => Math.abs(hourly.time[a] * 1000 - sampleArrival)
-      - Math.abs(hourly.time[b] * 1000 - sampleArrival))[0];
-    if (closest === undefined || Math.abs(hourly.time[closest] * 1000 - sampleArrival) > 45 * 60 * 1000) {
+    const closest = candidates.sort((a, b) => Math.abs(hourly.time[a] * 1000 - arrivalAt)
+      - Math.abs(hourly.time[b] * 1000 - arrivalAt))[0];
+    if (closest === undefined || Math.abs(hourly.time[closest] * 1000 - arrivalAt) > 45 * 60 * 1000) {
       throw new WeatherUnavailable('No forecast covers the sample arrival time.');
     }
     time = checkedTime(hourly.time[closest]);
@@ -202,7 +210,7 @@ async function forecastAt(location, when, { fetchImpl, now }) {
     fetchedAt: new Date(now).toISOString(),
     temperatureC,
     condition,
-    ...(when === 'arrival' ? { precipitationProbability, sampleArrivalAt: new Date(sampleArrival).toISOString() } : {}),
+    ...(when === 'arrival' ? { precipitationProbability, sampleArrivalAt: new Date(arrivalAt).toISOString() } : {}),
     source,
   };
 }
@@ -212,7 +220,7 @@ export function weatherReply(weather) {
     timeZone: weather.timeZone, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
   }).format(new Date(weather.validAt));
   if (weather.kind === 'arrival') {
-    return `Near Tokyo Haneda around the sample arrival, the forecast for ${hour} is ${weather.condition.toLowerCase()} and ${weather.temperatureC}°C, with a ${weather.precipitationProbability}% chance of precipitation. The flight time is fictional; this is a real weather forecast, not live flight information.`;
+    return `Near ${weather.location} around the sample arrival, the forecast for ${hour} is ${weather.condition.toLowerCase()} and ${weather.temperatureC}°C, with a ${weather.precipitationProbability}% chance of precipitation. The flight time is fictional; this is a real weather forecast, not live flight information.`;
   }
   return `Near ${weather.location}, current model conditions for ${hour} are ${weather.condition.toLowerCase()} and ${weather.temperatureC}°C. This is weather information, not live flight information.`;
 }

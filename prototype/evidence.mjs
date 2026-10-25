@@ -1,3 +1,4 @@
+import { getJourney, flightLabel } from './journeys.mjs';
 import { parseFlightId, isFollowUp, priorUserTurns } from './conversation-context.mjs';
 import { translationIntent } from './translator.mjs';
 import { urgentCrew } from './crew.mjs';
@@ -25,13 +26,13 @@ export function requiredEvidence(message,history=[]) {
 }
 export function claimedEvidence(reply) {
  const needed=[];
- if(/\b(?:flight|we|CL ?204) (?:is|are|has|have) (?:on time|delayed|landed)|\b(?:boarding|departure|arrival) (?:is|at) \d/i.test(reply))needed.push('flight_status');
+ if(/\b(?:flight|we|[A-Z]{2,3} ?[0-9]{1,4}) (?:is|are|has|have) (?:on time|delayed|landed)|\b(?:boarding|departure|arrival) (?:is|at) \d/i.test(reply))needed.push('flight_status');
  if(/\b(?:\d+|one|two|no) checked bags?\b|\b(?:baggage|carry-on).{0,30}\d+\s*kg/i.test(reply))needed.push('baggage_allowance');
  if(/\b(?:vegetarian|meal|drinks?|wi-fi).{0,30}(?:available|unavailable|\d+ portions)|\b(?:we (?:have|offer)).{0,30}(?:vegetarian|meals?)/i.test(reply))needed.push('meals_and_services');
  return needed;
 }
 export function requestedFlight(message,context={}) {
- return parseFlightId(message)||context.evidenceFlight||'CL204';
+ return parseFlightId(message)||context.evidenceFlight||getJourney(context.journeyId)?.flightId||'CL204';
 }
 export function matchingEvidence(tool,records,context,message,now=Date.now()) {
  const expected=demoScope(context),flight=requestedFlight(message,context);
@@ -48,9 +49,11 @@ export function matchingEvidence(tool,records,context,message,now=Date.now()) {
 }
 export function renderEvidence(record,message) {
  const f=record.facts;
+ const label=typeof f.flightId==='string'?f.flightId.replace(/([A-Z]+)(\d+)/,'$1 $2'):'CL 204';
+ if(record.tool==='flight_status'&&f.journeyId)return record.reply;
  if(record.tool==='flight_status')return `Fictional CL 204 demo: ${f.status==='on-time'?'On time':f.status==='delayed'?'Delayed by '+f.delayMinutes+' minutes':'Landed'}. Boarding: October 12, 2026 at ${f.boarding}, Gate ${f.gate}; departure: ${f.departure}; ${f.status==='landed'?'landed':'estimated arrival'}: October 13 at ${f.arrival}. This is simulated, not live flight status.${f.status==='landed'?' Landing does not confirm arrival at the gate; follow crew instructions.':''}`;
- if(record.tool==='baggage_allowance')return `Fictional CL 204 demo, ${f.fareLabel}: ${f.checkedBags===0?'No checked bag is included':f.checkedBags+' checked bag'+(f.checkedBags>1?'s are':' is')+' included, up to '+f.checkedKgEach+' kg each and '+f.checkedDimensionsTotalCm+' cm total dimensions'}. Cabin allowance: one carry-on up to ${f.cabinKg} kg (${f.cabinDimensionsCm.join(' × ')} cm) and one personal item (${f.personalDimensionsCm.join(' × ')} cm). This is fictional policy, not real ticket verification; extra fees are unverified and nothing is purchased.`;
- if(f.serviceStatus==='ended')return 'Fictional CL 204 demo: onboard meal and cabin service has ended in the Landed scenario. Nothing is ordered or reserved.';
+ if(record.tool==='baggage_allowance')return `Fictional ${label} demo, ${f.fareLabel}: ${f.checkedBags===0?'No checked bag is included':f.checkedBags+' checked bag'+(f.checkedBags>1?'s are':' is')+' included, up to '+f.checkedKgEach+' kg each and '+f.checkedDimensionsTotalCm+' cm total dimensions'}. Cabin allowance: one carry-on up to ${f.cabinKg} kg (${f.cabinDimensionsCm.join(' × ')} cm) and one personal item (${f.personalDimensionsCm.join(' × ')} cm). This is fictional policy, not real ticket verification; extra fees are unverified and nothing is purchased.`;
+ if(f.serviceStatus==='ended')return 'Fictional '+label+' demo: onboard meal and cabin service has ended in the Landed scenario. Nothing is ordered or reserved.';
  const parts=[];
  if(/\b(when|time|schedule)\b/i.test(message))parts.push('The demo plan offers the main meal '+f.servicePlan.mainMealMinutesAfterTakeoff+' minutes after takeoff and a snack '+f.servicePlan.snackMinutesBeforeArrival+' minutes before arrival; these are timing assumptions, not a current crew announcement.');
  const dietary=/\b(allerg\w*|vegan|halal|kosher|gluten|ingredients?|nuts?|dairy)\b/i.test(message);
@@ -59,7 +62,7 @@ export function renderEvidence(record,message) {
  if(/\b(wi[ -]?fi|internet|movies?|charging|amenities)\b/i.test(message))parts.push('Wi-Fi is '+(f.wifiAvailable?'available':'unavailable')+'; sample amenities include '+[f.seatbackMovies?'seatback movies':null,f.usbCharging?'USB charging':null].filter(Boolean).join(' and ')+'.');
  if(/\b(drinks?|coffee|tea|water|juice)\b/i.test(message))parts.push(f.drinksAvailable?'Sample drinks: water, tea, coffee and apple juice.':'Sample drinks service is unavailable.');
  if(/\b(blankets?|pillows?)\b/i.test(message))parts.push(`${f.stock.blanket} blankets and ${f.stock.pillow} pillows available in the sample stock.`);
- return 'Fictional CL 204 demo: '+parts.join(' ')+' Inventory is simulated; nothing is ordered or reserved.';
+ return 'Fictional '+label+' demo: '+parts.join(' ')+' Inventory is simulated; nothing is ordered or reserved.';
 }
 export function verifiedAnswer(needed,records,context,message) {
  const missing=[],parts=[],ids=[];

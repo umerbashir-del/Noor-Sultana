@@ -1,3 +1,4 @@
+import { getJourney, flightLabel, journeyStatusFacts, formatJourneyTime } from './journeys.mjs';
 import { randomUUID } from 'node:crypto';
 import { validateToolInput,canonicalFlight } from './tool-contracts.mjs';
 import { flightStatusReply,normalizeScenario } from './flight-status.mjs';
@@ -9,12 +10,12 @@ import { airportGuideReply,airportDestinations } from './airport-guide.mjs';
 import { crewReply,urgentCrew } from './crew.mjs';
 import { reminderReply } from './reminders.mjs';
 import { translationReply } from './translator.mjs';
-import { getWeather,getWeatherForPlace,weatherReply } from './weather.mjs';
+import { getWeather,getWeatherForPlace,getJourneyWeather,weatherReply } from './weather.mjs';
 import { findKnowledge, findKnowledgeByReferences } from './knowledge.mjs';
 import { createArrivalEmailDraft,fixedArrivalNote } from './email-draft.mjs';
 
 export function demoScope(context={}) {
- return {flightId:'CL204',scenario:normalizeScenario(context.demoScenario),fare:context.demoFare??'standard',inventory:context.demoMealStock??'available'};
+ return {flightId:getJourney(context.journeyId)?.flightId || 'CL204',scenario:normalizeScenario(context.demoScenario),fare:context.demoFare??'standard',inventory:context.demoMealStock??'available'};
 }
 function packet(tool,{status='ok',facts={},scope={},simulated=true,limitations=[],confirmationRequired=false,source='Noor fictional demo',...ui}) {
  return {id:randomUUID(),tool,status,facts,scope,simulated,limitations,confirmationRequired,source,observedAt:new Date().toISOString(),...ui};
@@ -26,12 +27,19 @@ function cleanFlight(id){return canonicalFlight(id);}
 export async function executePassengerTool(name,input,context={}) {
  validateToolInput(name,input);
  const scope=demoScope(context);
+ const journey=getJourney(context.journeyId);
+ const flightId=scope.flightId;
+ const adapt=data=>!journey?data:{...data,reply:data.reply.replace(/CL ?204/g,flightLabel(journey)).replace(/Haneda/g,journey.airportName),sourceLabel:data.sourceLabel?.replace(/CL ?204/g,flightLabel(journey)).replace(/Haneda/g,journey.airportName)};
  const result=(data)=>packet(name,{scope,...data});
- const limitFlight=(id)=>cleanFlight(id)!=='CL204';
+ const limitFlight=(id)=>cleanFlight(id)!==flightId;
  switch(name){
  case 'flight_status':{
-  if(limitFlight(input.flightId))return unsupported(name,'This demo cannot verify another flight; only fictional CL 204 is supported.',{flightId:cleanFlight(input.flightId)});
+  if(limitFlight(input.flightId))return unsupported(name,'This demo cannot verify a flight outside the selected journey.',{flightId:cleanFlight(input.flightId)});
   const scenario=scope.scenario;
+  if(journey){
+   const facts=journeyStatusFacts(journey,scenario);
+   return result({expression:'thoughtful',sourceLabel:'Demo flight status · Simulated data · Not live',facts,reply:`Fictional ${flightLabel(journey)}, JFK → ${journey.airport}: ${scenario==='on-time'?'On time':scenario==='delayed'?'Delayed by 45 minutes':'Landed'}. Boarding ${facts.boarding}, Gate ${facts.gate}; departure ${facts.departure}; arrival ${facts.arrival}. This is simulated, not live flight status.${scenario==='landed'?' Landing does not confirm arrival at the gate; follow crew instructions.':''}`,limitations:['Simulated status, not live flight data.']});
+  }
   const times={
    'on-time':{status:'on-time',boarding:'10:45 AM EDT',departure:'11:30 AM EDT',arrival:'2:40 PM JST',delayMinutes:0},
    delayed:{status:'delayed',boarding:'11:30 AM EDT',departure:'12:15 PM EDT',arrival:'3:25 PM JST',delayMinutes:45},
@@ -40,34 +48,36 @@ export async function executePassengerTool(name,input,context={}) {
   return result({...flightStatusReply('CL204',scenario),facts:{...times[scenario],flightId:'CL204',origin:'JFK',destination:'HND',gate:'32',departureDate:'2026-10-12',arrivalDate:'2026-10-13'},limitations:['Simulated status, not live flight data.']});
  }
  case 'flight_tracking':{
-  const data=await flightTrackingReply();
-  return result({...data,status:data.tracking?'ok':'unavailable',facts:data.tracking||null,scope:{provider:'FR24-sandbox'},source:'FR24 sandbox',limitations:['Fixed sample, not CL 204 tracking or proof of arrival.']});
+  const data=adapt(await flightTrackingReply());
+  return result({...data,status:data.tracking?'ok':'unavailable',facts:data.tracking||null,scope:{provider:'FR24-sandbox'},source:'FR24 sandbox',limitations:['Fixed sample, not tracking of the selected flight or proof of arrival.']});
  }
  case 'connection_assistant':{
+  if(journey && journey.id!=='tokyo')return unsupported(name,'No onward flight is included in this journey. I cannot verify a connection or change a booking.',scope);
+
   if(cleanFlight(input.inboundFlight)!=='CL204'||cleanFlight(input.onwardFlight)!=='CL310')return unsupported(name,'This connection demo cannot verify another itinerary; only fictional CL 204 and CL 310 are supported.',{flightId:cleanFlight(input.inboundFlight),onwardFlight:cleanFlight(input.onwardFlight)});
-  const data=connectionReply('Will I make my connection?',scope.scenario);
+  const data=connectionReply('Will I make my connection?',scope.scenario,journey);
   return result({...data,scope:{...scope,onwardFlight:'CL310'},facts:data.connectionFacts,limitations:['Invented route and transfer allowance. No connection guarantee or rebooking.']});
  }
  case 'baggage_allowance':{
   if(limitFlight(input.flightId))return unsupported(name,'The demo cannot verify baggage on another flight or an onward connection.',{flightId:cleanFlight(input.flightId)});
   const policy=baggagePolicies[scope.fare];
   if(!Object.hasOwn(baggagePolicies,scope.fare))return unsupported(name,'The selected demo fare is unsupported; no allowance can be verified.',scope);
-  return result({...baggageAllowanceReply('Baggage allowance',scope.fare),facts:{flightId:'CL204',fare:scope.fare,fareLabel:policy.label,checkedBags:policy.checked,checkedKgEach:policy.checkedKg,checkedDimensionsTotalCm:158,cabinBags:1,cabinKg:policy.cabinKg,cabinDimensionsCm:[55,40,23],personalItems:1,personalDimensionsCm:[40,30,15],feesVerified:false},limitations:['Fictional policy only. No real ticket verification, extra-fee quote or purchase.']});
+  return result({...adapt(baggageAllowanceReply('Baggage allowance',scope.fare)),facts:{flightId,fare:scope.fare,fareLabel:policy.label,checkedBags:policy.checked,checkedKgEach:policy.checkedKg,checkedDimensionsTotalCm:158,cabinBags:1,cabinKg:policy.cabinKg,cabinDimensionsCm:[55,40,23],personalItems:1,personalDimensionsCm:[40,30,15],feesVerified:false},limitations:['Fictional policy only. No real ticket verification, extra-fee quote or purchase.']});
  }
  case 'meals_and_services':{
   if(limitFlight(input.flightId))return unsupported(name,'The demo cannot verify meals on another flight or connection.',{flightId:cleanFlight(input.flightId)});
   if(!Object.hasOwn(mealStocks,scope.inventory))return unsupported(name,'The selected demo inventory is unsupported.',scope);
   const stock=mealStocks[scope.inventory],ended=scope.scenario==='landed';
   const questions={all:'menu',menu:'menu',drinks:'drinks',comfort:'blankets available',amenities:'Wi-Fi',dietary:'dietary allergies',service_times:'When is the meal?'};
-  const data=mealServiceReply(questions[input.category],scope.inventory,scope.scenario);
-  const reply=input.category==='all'&&!ended ? data.reply+' '+mealServiceReply('Wi-Fi',scope.inventory,scope.scenario).reply : data.reply;
-  return result({...data,reply,facts:{flightId:'CL204',serviceStatus:ended?'ended':scope.inventory==='unavailable'?'unavailable':'available',stock:ended?{vegetarian:0,chicken:0,snack:0,blanket:0,pillow:0}:stock,drinksAvailable:!ended&&scope.inventory!=='unavailable',drinks:['water','tea','coffee','apple juice'],wifiAvailable:false,seatbackMovies:true,usbCharging:true,dietarySafetyVerified:false,specialMealBookingVerified:false,servicePlan:{mainMealMinutesAfterTakeoff:60,snackMinutesBeforeArrival:120}},limitations:['Simulated inventory. Nothing reserved or ordered. Dietary safety/certification unverified.']});
+  const data=adapt(mealServiceReply(questions[input.category],scope.inventory,scope.scenario));
+  const reply=input.category==='all'&&!ended ? data.reply+' '+adapt(mealServiceReply('Wi-Fi',scope.inventory,scope.scenario)).reply : data.reply;
+  return result({...data,reply,facts:{flightId,serviceStatus:ended?'ended':scope.inventory==='unavailable'?'unavailable':'available',stock:ended?{vegetarian:0,chicken:0,snack:0,blanket:0,pillow:0}:stock,drinksAvailable:!ended&&scope.inventory!=='unavailable',drinks:['water','tea','coffee','apple juice'],wifiAvailable:false,seatbackMovies:true,usbCharging:true,dietarySafetyVerified:false,specialMealBookingVerified:false,servicePlan:{mainMealMinutesAfterTakeoff:60,snackMinutesBeforeArrival:120}},limitations:['Simulated inventory. Nothing reserved or ordered. Dietary safety/certification unverified.']});
  }
  case 'airport_guide':{
-  if(!['HND','RJTT'].includes(input.airport))return unsupported(name,'This guide covers only an invented Haneda layout, not that airport.',{airport:input.airport});
+  if(!(journey?[journey.airport,({tokyo:'RJTT',paris:'LFPG',dubai:'OMDB',rome:'LIRF'})[journey.id]]:['HND','RJTT']).includes(input.airport))return unsupported(name,'This guide covers only the selected journey’s invented airport layout.',{airport:input.airport});
   const ids={baggage_claim:'baggage',toilets:'toilets',accessibility:'accessibility',ground_transport:'transport',information:'information'};
   const item=airportDestinations.find(d=>d.id===ids[input.destination]);
-  return result({...airportGuideReply(item.name),scope:{airport:'HND',destination:input.destination},facts:{destination:item.name,route:item.route,walkingMinutes:item.minutes},limitations:['Not a real airport map or actual carousel assignment.']});
+  return result({...adapt(airportGuideReply(item.name)),scope:{airport:journey?.airport||'HND',destination:input.destination},facts:{destination:item.name,route:item.route,walkingMinutes:item.minutes},limitations:['Not a real airport map or actual carousel assignment.']});
  }
  case 'prepare_crew_request':{
   const original=context.originalMessage||input.details;
@@ -85,6 +95,14 @@ export async function executePassengerTool(name,input,context={}) {
  }
  case 'weather':{
   try{
+   if(journey){
+    const location=input.location.toLowerCase();
+    const atOrigin=['jfk','new york','new york jfk'].includes(location);
+    const atDestination=['destination','arrival',journey.city.toLowerCase(),journey.airport.toLowerCase(),journey.airportName.toLowerCase(),...(journey.id==='tokyo'?['haneda']:[])].includes(location);
+    if(input.when==='arrival'&&!atDestination)return unsupported(name,'Arrival forecast is unavailable for that location.',scope);
+    const weather=atOrigin||atDestination?await getJourneyWeather(journey.id,input.when==='arrival'?'arrival':'now',{origin:atOrigin}):await getWeatherForPlace(input.location);
+    return result({reply:weatherReply(weather),weather,facts:weather,scope:{location:weather.location,when:input.when},simulated:false,source:'Open-Meteo',limitations:['Model weather, not aviation safety guidance.']});
+   }
    const airport=/^(JFK|HND|Haneda)$/i.test(input.location);
    if(input.when==='arrival'&&!/^(HND|Haneda)$/i.test(input.location))return unsupported(name,'Arrival forecast is supported only for the fictional Haneda arrival.',{location:input.location,when:input.when});
    const weather=airport?await getWeather(/^JFK$/i.test(input.location)?'jfk':'hnd',input.when==='arrival'?'arrival':'now'):await getWeatherForPlace(input.location);
@@ -98,7 +116,7 @@ export async function executePassengerTool(name,input,context={}) {
  case 'arrival_note':return result({reply:fixedArrivalNote,facts:{note:fixedArrivalNote},limitations:['General demo note, not live airport guidance.']});
  case 'prepare_arrival_email':{
   const enabled=context.local!==false;
-  return result({status:enabled?'needs_confirmation':'unavailable',reply:enabled?'Review the fixed arrival email. Nothing has been sent or scheduled.':'Email scheduling is unavailable in this hosted preview.',facts:{sent:false,scheduled:false},confirmationRequired:enabled,...(enabled?{emailDraft:createArrivalEmailDraft()}:{}),limitations:['Passenger must verify address, review, and confirm.']});
+  return result({status:enabled?'needs_confirmation':'unavailable',reply:enabled?'Review the fixed arrival email. Nothing has been sent or scheduled.':'Email scheduling is unavailable in this hosted preview.',facts:{sent:false,scheduled:false},confirmationRequired:enabled,...(enabled?{emailDraft:createArrivalEmailDraft(journey)}:{}),limitations:['Passenger must verify address, review, and confirm.']});
  }
  }
 }

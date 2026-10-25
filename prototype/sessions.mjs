@@ -21,11 +21,11 @@ export function createSessionStore({ clock = Date.now } = {}) {
   }
 
   return {
-    create(visitorId = null) {
+    create(visitorId = null, journeyId) {
       const now = clock();
       const session = {
         id: randomBytes(32).toString('hex'), visitorId, createdAt: now, lastActiveAt: now,
-        revision: 0, messages: [], memory: cleanSessionMemory(),
+        revision: 0, messages: [], memory: cleanSessionMemory(journeyId ? { journeyId } : undefined),
       };
       sessions.set(session.id, session);
       return session;

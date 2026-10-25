@@ -1,38 +1,46 @@
-import { fixtureInput, fixtureReply } from './test-tool-inputs.mjs';
+import { fixtureInput } from './test-tool-inputs.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 import { answerWithTools } from './agent.mjs';
 import { createTraceStore } from './trace-store.mjs';
 import { passengerTools } from './agent.mjs';
-const scenarios = JSON.parse(await readFile(new URL('./agent-scenarios.json',import.meta.url),'utf8'));
-// These are deterministic harness contract tests, not measurements of real-model tool selection.
-for (const scenario of scenarios) test('offline scenario: '+scenario.id, async () => {
+// Scripted model responses test orchestration, not real-model tool selection.
+// Adapter variants and grounding failures have focused tests in this directory.
+test('multi-tool turns preserve history and context and finish a successful trace', async () => {
  const store=createTraceStore({dbPath:':memory:',toolNames:passengerTools.map(t=>t.name)});
- const context={ local:true,originalMessage:scenario.message,...scenario.context };
+ const history=[{role:'user',content:'Hello'},{role:'assistant',content:'Welcome aboard.'}];
+ const message='What bags are included and is vegetarian food available?';
+ const context={local:true,originalMessage:message,demoFare:'business',demoMealStock:'limited'};
  const original=structuredClone(context);
  let rounds=0;
  try {
-  const result=await answerWithTools({apiKey:'offline-only',model:'claude-test',system:'Passenger demo',messages:[...(scenario.history||[]),{role:'user',content:scenario.message}],context,traceFactory:()=>store.start(),
+  const result=await answerWithTools({apiKey:'offline-only',model:'claude-test',system:'Passenger demo',messages:[...history,{role:'user',content:message}],context,traceFactory:()=>store.start(),
    callModel:async(args)=>{
-    rounds++;
-    if(rounds===1 && scenario.tools.length) {
-     assert.deepEqual(args.messages.at(-1),{role:'user',content:scenario.message});
-     if(scenario.history) assert.deepEqual(args.messages.slice(0,scenario.history.length),scenario.history);
-     return {usageTokens:10,content:scenario.tools.map((t,i)=>({type:'tool_use',id:'tool-'+i,name:t.name,input:t.input}))};
+    if(++rounds===1){
+     assert.deepEqual(args.messages.slice(0,history.length),history);
+     assert.deepEqual(args.messages.at(-1),{role:'user',content:message});
+     return {content:[
+      {type:'tool_use',id:'bags',name:'baggage_allowance',input:{flightId:'CL204',bagType:'all'}},
+      {type:'tool_use',id:'meals',name:'meals_and_services',input:{flightId:'CL204',category:'all'}},
+     ]};
     }
-    const outputs=rounds===1 ? [] : args.messages.at(-1).content.map(t=>{assert.equal(t.type,'tool_result');assert.ok(!t.is_error);return JSON.parse(t.content);});
-    return {usageTokens:10,content:[{type:'text',text:JSON.stringify({reply:scenario.reply||outputs.map(fixtureReply).join(' '),expression:'thoughtful'})}]};
+    const outputs=args.messages.at(-1).content;
+    assert.equal(outputs.length,2);
+    for(const output of outputs){assert.equal(output.type,'tool_result');assert.ok(!output.is_error);}
+    assert.equal(JSON.parse(outputs[0].content).facts.checkedKgEach,32);
+    return {content:[{type:'text',text:'{"reply":"Please check the returned baggage and meal facts."}'}]};
    }});
-  assert.deepEqual(result.toolsUsed,scenario.tools.map(t=>t.name));
-  assert.ok(result.reply.includes(scenario.contains));
-  if(scenario.flag) assert.ok(result[scenario.flag]);
-  assert.deepEqual(context,original,'lookup/preparation must not mutate passenger state');
-  const events=store.read();
-  assert.equal(events.at(-1).event,'run_end');
-  assert.equal(events.at(-1).metadata.status,'success');
-  assert.equal(events.at(-1).metadata.toolCalls,scenario.tools.length);
- } finally{store.close();}
+  assert.equal(rounds,2);
+  assert.deepEqual(result.toolsUsed,['baggage_allowance','meals_and_services']);
+  assert.equal(result.evidenceStatus,'grounded');
+  assert.match(result.reply,/2 checked bags/);
+  assert.match(result.reply,/Stock is limited/);
+  assert.deepEqual(context,original);
+  const end=store.read().at(-1);
+  assert.equal(end.event,'run_end');
+  assert.equal(end.metadata.status,'success');
+  assert.equal(end.metadata.toolCalls,2);
+ } finally {store.close();}
 });
 test('invalid tool arguments produce safe feedback and allow a corrected call',async()=>{
  let round=0;

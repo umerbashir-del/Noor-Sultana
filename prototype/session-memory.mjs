@@ -1,3 +1,4 @@
+import { getJourney } from './journeys.mjs';
 import { cleanGuidanceReferences, guidanceReferencesForQuestion, planGuidanceQuery } from './knowledge.mjs';
 import { requiredEvidence } from './evidence.mjs';
 import { sessionFlightId, isFollowUp } from './conversation-context.mjs';
@@ -10,7 +11,7 @@ export function cleanSessionMemory(value) {
  if(['vegetarian','vegan'].includes(value?.preferences?.dietary))preferences.dietary=value.preferences.dietary;
  const flight=value?.flightId;
  const documents=cleanGuidanceReferences(value?.documents);
- return {...(documents.length?{documents}:{}),version:1,topics:Array.isArray(value?.topics)?[...new Set(value.topics.filter(t=>topics.has(t)))].slice(0,3):[],flightId:typeof flight==='string'&&/^[A-Z]{2,3}[0-9]{1,4}$/.test(flight)&&flight!=='FR24'?flight:'CL204',preferences};
+ return {...(getJourney(value?.journeyId) ? {journeyId:value.journeyId} : {}),...(documents.length?{documents}:{}),version:1,topics:Array.isArray(value?.topics)?[...new Set(value.topics.filter(t=>topics.has(t)))].slice(0,3):[],flightId:typeof flight==='string'&&/^[A-Z]{2,3}[0-9]{1,4}$/.test(flight)&&flight!=='FR24'?flight:(getJourney(value?.journeyId)?.flightId || 'CL204'),preferences};
 }
 export function updateSessionMemory(previous,message,sources=[]) {
  const memory=cleanSessionMemory(previous);

@@ -27,7 +27,7 @@ export function conversationContext(message,history,requiredTools,scope) {
    if(flightId||!isFollowUp(previous[i].content))break;
   }
  }
- return {flightId:flightId||'CL204',requiredTools,scenario:['on-time','delayed','landed'].includes(scope.scenario)?scope.scenario:'unsupported',fare:['basic','standard','business'].includes(scope.fare)?scope.fare:'unsupported',inventory:['available','limited','unavailable'].includes(scope.inventory)?scope.inventory:'unsupported',followUp:isFollowUp(message)};
+ return {flightId:flightId||scope.flightId||'CL204',requiredTools,scenario:['on-time','delayed','landed'].includes(scope.scenario)?scope.scenario:'unsupported',fare:['basic','standard','business'].includes(scope.fare)?scope.fare:'unsupported',inventory:['available','limited','unavailable'].includes(scope.inventory)?scope.inventory:'unsupported',followUp:isFollowUp(message)};
 }
 
 export function reminderNeedsNoStatus(message) {

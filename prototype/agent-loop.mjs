@@ -26,7 +26,7 @@ export async function runToolLoop({apiKey,model,system,messages,context={},callM
  if(required.includes('meals_and_services'))system+='\nMEAL EFFICIENCY: meals_and_services returns the complete selected inventory, service status, amenities and timing in one result. Reuse those facts within this turn; do not repeat the lookup for another category or to confirm that service has ended.';
  if(reminderOnly)system+='\nMANUAL REMINDER: prepare the requested manual reminder for passenger review. Do not look up or mention current flight times/status. A reminder delay does not depend on flight status. Nothing is saved without review and confirmation.';
  const followUpContext=conversationContext(question,messages,required,demoScope(context));
- if(!parseFlightId(question))followUpContext.flightId=memory.flightId;
+ if(!parseFlightId(question))followUpContext.flightId=context.journeyId&&!isFollowUp(question)?demoScope(context).flightId:memory.flightId;
  const plannedGuidance=planGuidanceQuery(question,required);
  const documentFollowUp=isFollowUp(question)&&memory.topics.includes('passenger_guidance')&&memory.documents?.length&&!guidanceReferencesForQuestion(plannedGuidance).length;
  context={...context,evidenceFlight:followUpContext.flightId,guidanceQuestion:documentFollowUp?memory.documents.map(ref=>ref.section).join(' and '):plannedGuidance,guidanceReferences:documentFollowUp?memory.documents:[]};
