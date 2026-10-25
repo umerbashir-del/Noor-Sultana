@@ -1,6 +1,24 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { answerWeather, askClaude, ClaudeUnavailable, weatherSystemContext } from './claude.mjs';
+import { requestToolModel } from './agent.mjs';
+
+test('Claude failures log only upstream status and request kind, without credentials or provider bodies', async () => {
+  const logs = [], original = console.log;
+  console.log = value => logs.push(JSON.parse(value));
+  try {
+    for (const request of [askClaude, requestToolModel]) {
+      await assert.rejects(request({ apiKey: 'secret-test-key', model: 'test', system: 'test', messages: [],
+        fetchImpl: async () => new Response('private upstream details', { status: 401 }),
+      }), { name: 'ClaudeUnavailable' });
+    }
+    assert.deepEqual(logs.map(({ event, status, kind }) => ({ event, status, kind })), [
+      { event: 'claude_upstream_error', status: 401, kind: 'messages' },
+      { event: 'claude_upstream_error', status: 401, kind: 'tools' },
+    ]);
+    assert.doesNotMatch(JSON.stringify(logs), /secret-test-key|private upstream/);
+  } finally { console.log = original; }
+});
 
 const weather = {
   location: 'Tokyo Haneda area', timeZone: 'Asia/Tokyo', kind: 'arrival',

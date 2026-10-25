@@ -1,38 +1,37 @@
+import { createReplicateVoice } from './replicate-voice.mjs';
+import { getJourney, journeySystemContext } from './journeys.mjs';
 import { segmentSpeech } from '../lib/speech-segments.mjs';
 import { createSpeechCache } from '../lib/speech-cache.mjs';
 import { runBudgetedClaude } from './token-budget.mjs';
 import { createTraceStore } from './trace-store.mjs';
 import { answerWithTools, requestToolModel, passengerTools } from './agent.mjs';
-import { translationIntent, translationReply } from './translator.mjs';
-import { reminderIntent, reminderReply, reminderAction, ReminderError } from './reminders.mjs';
-import { mealServiceIntent, mealServiceReply } from './meals.mjs';
-import { crewIntent, crewReply, crewAction, CrewError } from './crew.mjs';
-import { airportGuideIntent, airportGuideReply } from './airport-guide.mjs';
-import { baggageAllowanceIntent, baggageAllowanceReply } from './baggage.mjs';
-import { connectionIntent, connectionReply } from './connection.mjs';
-import { flightStatusIntent, flightStatusReply } from './flight-status.mjs';
-import { flightTrackingIntent, flightTrackingReply } from './fr24.mjs';
+import { reminderAction, ReminderError } from './reminders.mjs';
+import { crewAction, CrewError } from './crew.mjs';
 import { createServer } from 'node:http';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
-import { getWeather, getWeatherForPlace, weatherAvailabilityIntent, weatherIntent, WeatherUnavailable } from './weather.mjs';
+import { getWeather, WeatherUnavailable } from './weather.mjs';
 import { absoluteSessionMs, createSessionStore } from './sessions.mjs';
-import { answerWeather, askClaude, ClaudeUnavailable } from './claude.mjs';
-import { findKnowledge, knowledgeDocumentId, knowledgeSystemContext, readKnowledgeDocument } from './knowledge.mjs';
-import { arrivalEmailIntent, arrivalNoteIntent, createArrivalEmailDraft, fixedArrivalNote } from './email-draft.mjs';
+import { ClaudeUnavailable } from './claude.mjs';
+import { knowledgeDocumentId, readKnowledgeDocument } from './knowledge.mjs';
 import { createResendProvider } from './email-provider.mjs';
 import { createEmailScheduler, EmailFlowError } from './email-scheduler.mjs';
 import { createVoiceJobQueue, VoiceJobCancelled, VoiceQueueFull } from './voice-jobs.mjs';
 import { allowedOrigin, cookieHeader, createPublicConfig, newVisitorId } from './public-config.mjs';
-import { createUsageStore, estimateClaudeTokens, UsageLimitError, usageLimitsFromEnv } from './usage-store.mjs';
+import { createUsageStore, UsageLimitError, usageLimitsFromEnv } from './usage-store.mjs';
 import { logEvent, safeRoute } from './monitor.mjs';
 
 const root = resolve(fileURLToPath(new URL('.', import.meta.url)));
 await loadLocalEnv();
 const config = createPublicConfig();
+// Cloud speech is the default; legacy Python workers require an explicit opt-in.
+const cloudSpeech = process.env.NOOR_SPEECH_PROVIDER !== 'local';
+const replicateVoice = createReplicateVoice({ token: process.env.REPLICATE_API_TOKEN });
+const speechAvailable = () => cloudSpeech ? replicateVoice.available : existsSync(process.env.CHATTERBOX_PYTHON || defaultVoicePython);
+const asrRequests = new Map();
 const dataDir = process.env.NOOR_DATA_DIR || resolve(root, 'data');
 let agentTraceStore;
 try {
@@ -72,7 +71,7 @@ const publicFiles = new Set([
   'home.html',
   'home.css',
   'home.js',
-  'home-data.mjs',
+  'home-data.mjs', 'journeys.mjs',
   'assets/destinations/tokyo.png',
   'assets/destinations/paris.png',
   'assets/destinations/dubai.png',
@@ -80,19 +79,24 @@ const publicFiles = new Set([
   'app.js',
   'avatar.js',
   'avatar-pose.mjs',
+  'avatar-motion.mjs',
   'speech-mouth.js',
   'styles.css',
+  'design-tokens.css',
+  'ui-controls.js',
+  ...['latin', 'latin-ext', 'vietnamese'].flatMap(subset => [400, 500, 600, 700].map(weight => `assets/fonts/barlow-${subset}-${weight}.woff2`)),
+  'assets/fonts/OFL.txt',
   'assets/airplane-cabin.png',
   'assets/noor.png',
   'assets/noor-thinking.png',
 ]);
 
-// The approved, fixed V6 application runtime is public on local and hosted builds.
+// The approved, fixed V7 application runtime is public on local and built output.
 // Historical exports and the authoring SDK remain in the protected local tree.
-const bundledAvatar = JSON.parse(await readFile(resolve(root, 'live2d/noor-v6/manifest.json'), 'utf8'));
-publicFiles.add('live2d/noor-v6/manifest.json');
+const bundledAvatar = JSON.parse(await readFile(resolve(root, 'live2d/noor-v7/manifest.json'), 'utf8'));
+publicFiles.add('live2d/noor-v7/manifest.json');
 for (const name of bundledAvatar.files) {
-  if (typeof name === 'string' && /^[a-zA-Z0-9_./-]+$/.test(name) && !name.startsWith('/') && !name.split('/').some(part => !part || part === '.' || part === '..')) publicFiles.add(`live2d/noor-v6/${name}`);
+  if (typeof name === 'string' && /^[a-zA-Z0-9_./-]+$/.test(name) && !name.startsWith('/') && !name.split('/').some(part => !part || part === '.' || part === '..')) publicFiles.add(`live2d/noor-v7/${name}`);
 }
 
 // Historical local-only exports are not part of the public bundle.
@@ -141,7 +145,7 @@ emailScheduler.runDue().catch((error) => console.error(`[Email worker] ${error.m
 
 const systemPrompt = `You are Noor, a warm, concise in-flight guide in a visual-novel demo.
 
-These are the baseline fictional flight details; when passenger tools are available, use their results for the selected demo scenario instead of assuming this timetable: Noor International Airlines CL 204, JFK to HND, departure October 12 at 11:30 AM EDT, boarding 10:45 AM EDT at Gate 32, arrival October 13 at 2:40 PM JST, scheduled duration 14 hours 10 minutes. These are sample details, not live data. For supported weather questions, the server supplies checked Open-Meteo facts in additional system context; use only those facts for weather. Passenger tools may supply simulated flight status, airport directions, baggage rules, and cabin services. Do not claim that simulated data is real flight status, actual airport operations, or live cabin inventory; do not invent calendars or announcements. If asked for information the demo does not have, say you do not have it and direct the passenger to cabin crew when appropriate.
+Use the server-selected journey record for the timetable. These are sample details, not live data. For supported weather questions, the server supplies checked Open-Meteo facts in additional system context; use only those facts for weather. Passenger tools may supply simulated flight status, airport directions, baggage rules, and cabin services. Do not claim that simulated data is real flight status, actual airport operations, or live cabin inventory; do not invent calendars or announcements. If asked for information the demo does not have, say you do not have it and direct the passenger to cabin crew when appropriate.
 
 This is a passenger demo. Draft passenger knowledge may be supplied in additional system context for general guidance. It is not approved airline policy; do not present it as such. Do not reveal or create crew-only calendar entries or announcement drafts. For medical, safety, security, or urgent requests, tell the passenger to contact cabin crew and follow crew instructions. Do not give aircraft-operating instructions or make up emergency guidance.
 
@@ -160,12 +164,6 @@ async function loadLocalEnv() {
     const value = match[2].replace(/^(?:"(.*)"|'(.*)')$/, (_, doubleQuoted, singleQuoted) => doubleQuoted ?? singleQuoted ?? '');
     process.env[match[1]] = value;
   }
-}
-
-async function askWithBudget(args, visitorId) {
-  const answer = await runBudgetedClaude(args, { store: usageStore, visitorId, requestModel: askClaude, maxOutputTokens: 300 });
-  logEvent('claude_usage', { kind: 'claude', tokens: answer.usageTokens ?? answer.reservation.reservedTokens });
-  return { reply: answer.reply, expression: answer.expression };
 }
 
 function ensureVoiceWorker() {
@@ -247,6 +245,7 @@ let speechRequestSequence = 0;
 function cancelSessionSpeech(sessionId) {
   speechRequests.get(sessionId)?.cancel();
   voiceJobs.cancelSession(sessionId);
+  asrRequests.get(sessionId)?.abort();
 }
 
 function writeSpeechLine(response, payload, entry) {
@@ -343,6 +342,7 @@ async function handleTranscribe(request, response) {
   }
   let audio;
   try { audio = await readAudio(request); } catch { return sendJson(response, 400, { error: 'Recording is too large or unreadable.' }); }
+  if (cloudSpeech && audio.length > 900000) return sendJson(response, 400, { error: 'Recording is too large. Record a shorter question.' });
   if (audio.length < 1000) return sendJson(response, 400, { error: 'Recording was too short. Please try again.' });
   try { usageStore.recordOperation(session.visitorId, 'transcribe'); }
   catch (error) {
@@ -350,7 +350,22 @@ async function handleTranscribe(request, response) {
     throw error;
   }
   try {
-    const text = await transcribeAudio(audio);
+    if (cloudSpeech && !replicateVoice.available) return sendJson(response, 503, { error: 'Microphone transcription is not connected yet. You can still type your question.' });
+    const controller = new AbortController();
+    const closed = () => { if (!response.writableEnded) controller.abort(); };
+    asrRequests.get(session.id)?.abort();
+    asrRequests.set(session.id, controller);
+    response.once('close', closed);
+    let text;
+    try {
+      text = cloudSpeech
+        ? await replicateVoice.transcribe(audio, request.headers['content-type'].split(';')[0].toLowerCase(), controller.signal)
+        : await transcribeAudio(audio);
+      if (controller.signal.aborted || response.destroyed) return;
+    } finally {
+      response.off('close', closed);
+      if (asrRequests.get(session.id) === controller) asrRequests.delete(session.id);
+    }
     return sendJson(response, 200, { text });
   } catch (error) {
     console.error(`[Whisper] ${error.message}`);
@@ -385,6 +400,11 @@ async function handleSpeak(request, response) {
     if (error instanceof UsageLimitError) return sendJson(response, 429, { error: error.message });
     throw error;
   }
+  if (cloudSpeech && !replicateVoice.available) return sendJson(response, 503, { error: 'Chatterbox voice is not connected yet.' });
+  if (cloudSpeech && (session.messages.at(-1)?.role !== 'assistant' || session.messages.at(-1)?.content !== text.trim())) {
+    return sendJson(response, 409, { error: 'Only Noor’s current reply can be spoken.' });
+  }
+  const replyRevision = session.revision;
   const streaming = body.stream === true;
   const scope = `speech-${++speechRequestSequence}`;
   const started = Date.now();
@@ -400,18 +420,21 @@ async function handleSpeak(request, response) {
   trace('start');
   const entry = {
     cancelled: false,
+    controller: new AbortController(),
     job: null,
-    cancel() { if (!this.cancelled) trace('cancel'); this.cancelled = true; this.job?.cancel(); this.waitCancel?.(); },
+    cancel() { if (!this.cancelled) trace('cancel'); this.cancelled = true; this.controller.abort(); this.job?.cancel(); this.waitCancel?.(); },
   };
   speechRequests.get(session.id)?.cancel();
   speechRequests.set(session.id, entry);
-  const current = () => !entry.cancelled && speechRequests.get(session.id) === entry && !response.destroyed;
+  const deadline = cloudSpeech ? setTimeout(() => entry.controller.abort(), 50_000) : undefined;
+  const current = () => !entry.cancelled && speechRequests.get(session.id) === entry && !response.destroyed
+    && (!cloudSpeech || session.revision === replyRevision);
   const closed = () => { if (!response.writableEnded) entry.cancel(); };
   response.on('close', closed);
   if (response.destroyed) entry.cancel();
   try {
     let identity;
-    if (streaming) {
+    if (streaming && !cloudSpeech) {
       if (!current()) return;
       entry.job = voiceJobs.submit(session.id, { kind: 'identity' });
       const info = await entry.job.promise;
@@ -420,16 +443,20 @@ async function handleSpeak(request, response) {
       identity = info.identity;
       if (typeof identity !== 'string' || !identity.startsWith('chatterbox-tts@')) throw new Error('Voice identity unavailable');
     }
-    const segments = streaming ? segmentSpeech(text.trim(), { local: true }) : [text.trim()];
+    const segments = streaming ? segmentSpeech(text.trim(), { local: !cloudSpeech }) : [text.trim()];
     for (const [index, segment] of segments.entries()) {
       if (!current()) throw new VoiceJobCancelled();
-      let audio = streaming ? speechCache.get(identity, segment) : null;
+      let audio = streaming && !cloudSpeech ? speechCache.get(identity, segment) : null;
       if (!audio) {
-        entry.job = voiceJobs.submit(session.id, segment);
-        audio = await entry.job.promise;
-        entry.job = null;
+        if (cloudSpeech) {
+          audio = await replicateVoice.speak(segment, entry.controller.signal);
+        } else {
+          entry.job = voiceJobs.submit(session.id, segment);
+          audio = await entry.job.promise;
+          entry.job = null;
+        }
         if (!current()) throw new VoiceJobCancelled();
-        if (streaming) speechCache.set(identity, segment, audio);
+        if (streaming && !cloudSpeech) speechCache.set(identity, segment, audio);
       }
       if (!current()) throw new VoiceJobCancelled();
       if (streaming) {
@@ -460,6 +487,7 @@ async function handleSpeak(request, response) {
     }
   } catch (error) {
     if (response.destroyed) return;
+    if (!entry.cancelled) console.error(`[Speech] ${error.name === 'Error' ? error.message : 'Request interrupted.'}`);
     const stopped = entry.cancelled || error instanceof VoiceJobCancelled;
     const message = stopped ? 'Speech was stopped.' : 'Noor’s voice is unavailable. Please try again.';
     if (streaming && response.headersSent) {
@@ -469,6 +497,8 @@ async function handleSpeak(request, response) {
     else if (error instanceof VoiceQueueFull) return sendJson(response, 429, { error: error.message });
     else return sendJson(response, 503, { error: message });
   } finally {
+    clearTimeout(deadline);
+    entry.controller.abort();
     response.off('close', closed);
     if (speechRequests.get(session.id) === entry) speechRequests.delete(session.id);
   }
@@ -506,13 +536,16 @@ function handleStartSession(request, response) {
   if (!checkRateLimit(request.socket.remoteAddress || 'local')) {
     return sendJson(response, 429, { error: 'Please wait a moment before starting another conversation.' });
   }
+  const journey = getJourney(new URL(request.url, 'http://localhost').searchParams.get('journey') || 'tokyo');
+  if (!journey) return sendJson(response, 400, { error: 'Please send a valid request.' });
   const previousId = sessionIdFrom(request);
   const visitorId = visitorIdFrom(request) || newVisitorId();
   if (previousId && sessionFrom(request)) {
     cancelSessionSpeech(previousId);
     sessions.end(previousId);
   }
-  const session = sessions.create(visitorId);
+  const session = sessions.create(visitorId, journey.id);
+  session.memory.flightId = journey.flightId;
   response.setHeader('set-cookie', [
     cookieHeader(sessionCookieName, session.id, Math.floor(absoluteSessionMs / 1000), config.secureCookies),
     cookieHeader(visitorCookieName, visitorId, visitorCookieSeconds, config.secureCookies),
@@ -572,10 +605,12 @@ async function handleChat(request, response) {
   } catch (error) {
     return sendJson(response, 400, { error: error.message === 'Request is too large.' ? error.message : 'Please send a valid message.' });
   }
+  if (body?.expectedJourneyId && body.expectedJourneyId !== session.memory.journeyId) return sendJson(response, 401, { error: 'Your conversation has ended. Please start a new one.' });
   const message = typeof body?.message === 'string' ? body.message.trim() : '';
   if (!message || message.length > maxMessageLength) {
     return sendJson(response, 400, { error: 'Please send a valid message.' });
   }
+  cancelSessionSpeech(session.id);
   const revision = sessions.beginTurn(session);
   if (revision === null) return sendJson(response, 401, { error: 'Your conversation has ended. Please start a new one.' });
   response.on('close', () => {
@@ -585,8 +620,8 @@ async function handleChat(request, response) {
   { // Protected routing is mandatory; client useTools flags cannot bypass it.
     try {
       const answer = await answerWithTools({
-        apiKey: process.env.ANTHROPIC_API_KEY, model, system: systemPrompt,
-        messages: sessions.context(session, message), context: { ...body, originalMessage: message, local: true, sessionMemory: session.memory },
+        apiKey: process.env.ANTHROPIC_API_KEY, model, system: systemPrompt + '\n' + journeySystemContext(getJourney(session.memory.journeyId) || getJourney('tokyo')),
+        messages: sessions.context(session, message), context: { ...body, originalMessage: message, local: true, journeyId: session.memory.journeyId || 'tokyo', sessionMemory: session.memory },
         traceFactory: () => agentTraceStore?.start(),
         callModel: (args) => runBudgetedClaude(args, { store: usageStore, visitorId: session.visitorId, requestModel: requestToolModel, maxOutputTokens: 700 }),
       });
@@ -595,119 +630,7 @@ async function handleChat(request, response) {
       return sendJson(response, error instanceof UsageLimitError ? 429 : 502, { error: error instanceof ClaudeUnavailable || error instanceof UsageLimitError ? error.message : 'Noor could not use her tools right now.', traceId: error.traceId, limitScope: error instanceof UsageLimitError ? error.scope : undefined });
     }
   }
-  if (translationIntent(message)) {
-    return finishChat(response, session, revision, message, translationReply(message, body?.demoLanguage));
-  }
-  if (reminderIntent(message)) {
-    return finishChat(response, session, revision, message, reminderReply());
-  }
-  if (mealServiceIntent(message)) {
-    return finishChat(response, session, revision, message, mealServiceReply(message, body?.demoMealStock, body?.demoScenario));
-  }
-  if (crewIntent(message)) {
-    return finishChat(response, session, revision, message, crewReply(message));
-  }
-  if (airportGuideIntent(message)) {
-    return finishChat(response, session, revision, message, airportGuideReply(message));
-  }
-  if (baggageAllowanceIntent(message)) {
-    return finishChat(response, session, revision, message, baggageAllowanceReply(message, body?.demoFare));
-  }
-  if (connectionIntent(message)) {
-    return finishChat(response, session, revision, message, connectionReply(message, body?.demoScenario));
-  }
-  if (flightStatusIntent(message)) {
-    return finishChat(response, session, revision, message, flightStatusReply(message, body?.demoScenario));
-  }
-  if (flightTrackingIntent(message)) {
-    return finishChat(response, session, revision, message, await flightTrackingReply());
-  }
-  if (arrivalEmailIntent(message)) {
-    return finishChat(response, session, revision, message, {
-      reply: 'I can prepare a fixed arrival email. Enter your address, verify it with the code I send, then review the exact message and send time before scheduling.',
-      expression: 'thoughtful',
-      sourceLabel: 'Fixed arrival email · Fictional flight demo',
-      emailDraft: createArrivalEmailDraft(),
-    });
-  }
-  if (arrivalNoteIntent(message)) {
-    return finishChat(response, session, revision, message, {
-      reply: `${fixedArrivalNote} This is a general demo note, not live airport guidance.`,
-      expression: 'welcoming', sourceLabel: 'Fixed arrival note · Fictional flight demo',
-    });
-  }
-  if (weatherAvailabilityIntent(message)) {
-    return finishChat(response, session, revision, message, {
-      reply: 'I can check current model weather for a named city, including places outside this sample route. Add a state or country if the name is ambiguous. I can also check near JFK or Tokyo and the sample Tokyo arrival forecast while that time is within the forecast window.',
-      expression: 'thoughtful', sourceLabel: 'Weather lookup · Open-Meteo',
-    });
-  }
-  const intent = weatherIntent(message);
-  if (intent?.unsupported) {
-    return finishChat(response, session, revision, message, {
-      reply: intent.unsupported === 'departure'
-        ? 'I can check current weather in a named city or near JFK and Tokyo, and the forecast near the sample Tokyo arrival. I don’t have a departure-time forecast yet.'
-        : intent.unsupported === 'location'
-          ? 'Please name one city, and add a state or country if it could mean more than one place.'
-          : 'I can check current weather in a named city and the forecast near the sample Tokyo arrival. I don’t have that forecast time yet.',
-      expression: 'thoughtful',
-      sourceLabel: 'Weather lookup · Limited demo',
-    });
-  }
-  if (intent) {
-    let weather;
-    try {
-      weather = intent.place ? await getWeatherForPlace(intent.place) : await getWeather(intent.location, intent.when);
-    } catch (error) {
-      const pastArrival = error instanceof WeatherUnavailable && /sample arrival/.test(error.message);
-      return finishChat(response, session, revision, message, {
-        reply: pastArrival
-          ? 'The demo’s sample arrival date has passed or is outside the forecast window. I can check current Tokyo weather, but I can’t give an arrival forecast for that sample flight.'
-          : error instanceof WeatherUnavailable && error.code === 'ambiguous'
-            ? 'I found more than one place with that name. Please include a state or country.'
-            : error instanceof WeatherUnavailable && error.code === 'place'
-              ? 'I could not find that place. Try a city name with its state or country.'
-          : 'I can’t retrieve verified weather right now. Please try again later.',
-        expression: 'thoughtful', sourceLabel: 'Weather unavailable',
-      });
-    }
-    const answer = await answerWeather({
-      weather, message, apiKey: process.env.ANTHROPIC_API_KEY, model, systemPrompt,
-      ask: (args) => askWithBudget(args, session.visitorId),
-    });
-    return finishChat(response, session, revision, message, {
-      ...answer, weather,
-    });
-  }
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return sendJson(response, 503, { error: 'Claude is not connected yet. Add your Anthropic key to .env.local, then restart Noor.' });
-  }
 
-  let knowledge = null;
-  try {
-    knowledge = await findKnowledge(message);
-  } catch (error) {
-    console.error(`[Knowledge] ${error.message}`);
-  }
-  let answer;
-  try {
-    answer = await askWithBudget({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-      model,
-      system: knowledge ? `${systemPrompt}\n\n${knowledgeSystemContext(knowledge)}` : systemPrompt,
-      messages: sessions.context(session, message),
-    }, session.visitorId);
-  } catch (error) {
-    if (error instanceof UsageLimitError) return sendJson(response, 429, { error: error.message });
-    return sendJson(response, 502, {
-      error: error instanceof ClaudeUnavailable ? error.message : 'Claude could not answer just now. Please try again.',
-    });
-  }
-  return finishChat(response, session, revision, message, {
-    ...answer,
-    sourceLabel: knowledge ? 'Claude · Draft passenger guidance' : 'Claude · Fictional flight information · Not live',
-    ...(knowledge ? { knowledgeSources: knowledge.sources || [knowledge.source] } : {}),
-  });
 }
 
 async function handleWeather(request, response, url) {
@@ -751,10 +674,10 @@ async function handleEmail(request, response, url) {
       return sendJson(response, 200, emailScheduler.verify(session.id, body?.challengeId, body?.code));
     }
     if (url.pathname === '/api/email/review') {
-      return sendJson(response, 200, emailScheduler.review(session.id, body?.challengeId, body?.scheduledAt));
+      return sendJson(response, 200, emailScheduler.review(session.id, body?.challengeId, body?.scheduledAt, session.memory.journeyId));
     }
     if (url.pathname === '/api/email/schedule') {
-      return sendJson(response, 200, { job: emailScheduler.schedule(session.id, body?.challengeId, body?.scheduledAt, body?.reviewHash) });
+      return sendJson(response, 200, { job: emailScheduler.schedule(session.id, body?.challengeId, body?.scheduledAt, body?.reviewHash, session.memory.journeyId) });
     }
     const cancelMatch = /^\/api\/email\/jobs\/([a-f0-9-]{36})\/cancel$/.exec(url.pathname);
     if (cancelMatch) {
@@ -799,6 +722,8 @@ async function handleReminders(request, response) {
 }
 
 const mimeTypes = {
+  '.woff2': 'font/woff2',
+  '.txt': 'text/plain; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -883,6 +808,8 @@ export const server = createServer(async (request, response) => {
       return await handleEmail(request, response, url);
     }
     if (request.method === 'GET' && url.pathname === '/api/weather') return await handleWeather(request, response, url);
+    if (request.method === 'GET' && url.pathname === '/api/speak') return sendJson(response, 200, { available: speechAvailable(), provider: cloudSpeech ? 'Replicate' : 'local' });
+    if (request.method === 'GET' && url.pathname === '/api/transcribe') return sendJson(response, 200, { available: cloudSpeech ? replicateVoice.available : existsSync(process.env.ASR_PYTHON || process.env.CHATTERBOX_PYTHON || defaultVoicePython), provider: cloudSpeech ? 'Replicate' : 'local', maxRecordingSeconds: 30, maxBytes: cloudSpeech ? 900000 : maxAudioBytes });
     if (request.method === 'POST' && url.pathname === '/api/speak') return await handleSpeak(request, response);
     if (request.method === 'POST' && url.pathname === '/api/transcribe') return await handleTranscribe(request, response);
     if (request.method === 'POST' && url.pathname === '/api/stop') return handleStop(request, response);
@@ -898,6 +825,10 @@ export const server = createServer(async (request, response) => {
   console.log(`Noor demo listening on ${config.host}:${server.address().port}`);
   if (!process.env.ANTHROPIC_API_KEY) console.log('Add ANTHROPIC_API_KEY to prototype/.env.local and restart to enable Claude.');
   if (!emailProvider) console.log('Add RESEND_API_KEY and NOOR_EMAIL_FROM to prototype/.env.local to enable email verification and scheduling.');
+  if (cloudSpeech) {
+    console.log(replicateVoice.available ? 'Replicate speech configured; no local model warmup.' : 'Replicate speech unavailable: add REPLICATE_API_TOKEN to prototype/.env.local and restart.');
+    return;
+  }
   if (process.env.NOOR_SKIP_VOICE_WARMUP === '1') return;
   try {
     voiceCommand({ kind: 'warmup' }).then(

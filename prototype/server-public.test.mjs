@@ -50,6 +50,27 @@ test('health, visitor cookies, origin checks, and session isolation work over HT
     assert.equal((await fetch(`${base}/live2d-local/not-in-manifest.js`)).status, 404);
     assert.equal((await fetch(`${base}/live2d-local/../server.mjs`)).status, 404);
     assert.equal((await fetch(`${base}/avatar.js`)).status, 200);
+    assert.equal((await fetch(`${base}/avatar-motion.mjs`)).status, 200);
+    const currentAvatar = await fetch(`${base}/live2d/noor-v7/manifest.json`);
+    assert.equal(currentAvatar.status, 200);
+    const currentManifest = await currentAvatar.json();
+    assert.equal(currentManifest.version, 'noor-v7');
+    assert.equal((await fetch(`${base}/live2d/noor-v7/${currentManifest.physics.file}`)).status, 200);
+
+    const tokens = await fetch(`${base}/design-tokens.css`);
+    assert.match(tokens.headers.get('content-type'), /text\/css/);
+    const tokenCss = await tokens.text();
+    const fontPaths = [...tokenCss.matchAll(/url\(([^)]+)\)/g)].map(match => match[1]);
+    assert.equal(fontPaths.length, 12);
+    for (const path of fontPaths) {
+      assert.match(path, /^\.\/assets\/fonts\/barlow-[a-z-]+-\d+\.woff2$/);
+      const font = await fetch(new URL(path, base));
+      assert.equal(font.status, 200);
+      assert.equal(font.headers.get('content-type'), 'font/woff2');
+      assert.equal(Buffer.from(await font.arrayBuffer()).subarray(0, 4).toString(), 'wOF2');
+    }
+    assert.equal((await fetch(`${base}/assets/fonts/OFL.txt`)).status, 200);
+    assert.equal((await fetch(`${base}/assets/fonts/not-allowlisted.woff2`)).status, 404);
 
     const startAlice = await fetch(`${base}/api/session`, { method: 'POST' });
     assert.equal(startAlice.status, 200);

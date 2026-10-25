@@ -13,11 +13,11 @@ const code=slice('function cancelSessionSpeech(','function ensureAsrWorker()')+s
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return{promise,resolve,reject};};
 const flush=async()=>{for(let i=0;i<20;i++)await Promise.resolve();};
 class Response extends EventEmitter{headersSent=false;destroyed=false;writableEnded=false;writableFinished=false;writes=[];status=0;headers={};setHeader(key,value){this.headers[key]=value;}writeHead(status,headers){this.status=status;this.headers={...this.headers,...headers};this.headersSent=true;return this;}write(value){this.writes.push(value);this.onWrite?.(value);return !this.destroyed;}end(value){if(value!==undefined)this.writes.push(value);this.writableEnded=true;this.writableFinished=true;this.emit('finish');this.emit('close');}close(){this.destroyed=true;this.emit('close');}get lines(){return this.writes.filter(v=>typeof v==='string').join('').trim().split('\n').filter(Boolean).map(v=>JSON.parse(v));}}
-function harness({generate=async text=>Buffer.from('RIFF:'+text)}={}){
+function harness({generate=async text=>Buffer.from('RIFF:'+text),cloud=false}={}){
  const calls=[],charges=[],events=[];let active,stops=0,identity='chatterbox-tts@0.1.7:reference-sha-a';
  const voiceJobs=createVoiceJobQueue({run:async payload=>{if(payload?.kind==='identity')return{identity};calls.push(payload);const pending=deferred();active=pending;Promise.resolve(generate(payload)).then(pending.resolve,pending.reject);try{return await pending.promise;}finally{if(active===pending)active=null;}},cancelActive:()=>{stops++;active?.reject(new Error('worker stopped'));}});
  class UsageLimitError extends Error{}
- const context={Buffer,Date,speechRequestSequence:0,logEvent:(event,fields)=>events.push({event,...fields}),segmentSpeech,speechCache:createSpeechCache(),speechRequests:new Map(),voiceJobs,VoiceJobCancelled,VoiceQueueFull,UsageLimitError,checkRateLimit:()=>true,sessionFrom:req=>req.session,readJson:async req=>req.body,usageStore:{recordOperation:(visitor,kind)=>charges.push([visitor,kind])}};
+ const context={Buffer,Date,setTimeout,clearTimeout,AbortController,console,cloudSpeech:cloud,replicateVoice:{available:true,speak:async(text,signal)=>{calls.push(text);return generate(text,signal);}},asrRequests:new Map(),speechRequestSequence:0,logEvent:(event,fields)=>events.push({event,...fields}),segmentSpeech,speechCache:createSpeechCache(),speechRequests:new Map(),voiceJobs,VoiceJobCancelled,VoiceQueueFull,UsageLimitError,checkRateLimit:()=>true,sessionFrom:req=>req.session,readJson:async req=>req.body,usageStore:{recordOperation:(visitor,kind)=>charges.push([visitor,kind])}};
  vm.createContext(context);vm.runInContext(code,context);
  const req=(text,stream=true,session='alice')=>Object.assign(new EventEmitter(),{socket:{remoteAddress:'local'},session:{id:session,visitorId:session+'-visitor'},body:{text,stream}});
  return{context,calls,charges,events,req,get stops(){return stops;},setIdentity:value=>identity=value};
@@ -95,4 +95,26 @@ test('real HTTP client abort records premature close and cancels active generati
   assert(h.events.some(event=>event.kind==='cancel'));assert.equal(h.stops,1);
   assert.equal(h.events.some(event=>event.kind==='terminal_done'||event.kind==='response_finish'),false);
  } finally {server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
+});
+
+
+test('local Replicate transport authorizes the current reply and streams three cloud segments without Python jobs', async () => {
+ const h=harness({cloud:true}), res=new Response(), req=h.req(longReply);
+ req.session.messages=[{role:'assistant',content:longReply}];req.session.revision=2;
+ await h.context.handleSpeak(req,res);
+ assert.equal(res.status,200);assert.deepEqual(h.calls,segmentSpeech(longReply,{local:false}));
+ assert.equal(h.calls.length,3);assert.equal(res.lines.at(-1).done,true);assert.equal(h.stops,0);
+ const rejected=new Response(), forged=h.req('Different text.');forged.session.messages=req.session.messages;
+ await h.context.handleSpeak(forged,rejected);assert.equal(rejected.status,409);assert.equal(h.calls.length,3);
+});
+
+test('local Replicate Stop aborts the current prediction signal and emits no audio', async () => {
+ let started;
+ const ready=new Promise(resolve=>{started=resolve;});
+ const h=harness({cloud:true,generate:(_,signal)=>new Promise((resolve,reject)=>{
+  signal.addEventListener('abort',()=>reject(new Error('cancelled')),{once:true});started();
+ })}),res=new Response(),req=h.req('Hello.');
+ req.session.messages=[{role:'assistant',content:'Hello.'}];req.session.revision=1;
+ const task=h.context.handleSpeak(req,res);await ready;h.context.cancelSessionSpeech('alice');await task;
+ assert.equal(res.status,409);assert.equal(res.lines.some(line=>line.audio),false);assert.equal(h.context.speechRequests.size,0);
 });

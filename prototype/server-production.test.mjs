@@ -13,19 +13,22 @@ test('production requires its configured origin and emits secure cookies', async
   process.env.NOOR_LOCAL_UNLIMITED_USAGE = '1';
   process.env.NOOR_DAILY_SPEAK_VISITOR_REQUESTS = '1';
   process.env.CHATTERBOX_PYTHON = '/nonexistent/noor-production-test-python';
+  process.env.REPLICATE_API_TOKEN = '';
   const { server } = await import('./server.mjs');
   if (!server.listening) await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
+    assert.equal((await (await fetch(`${base}/api/speak`)).json()).available, false);
+    assert.equal((await (await fetch(`${base}/api/transcribe`)).json()).available, false);
     // Historical local exports remain private; the reviewed V6 app is public.
     assert.equal((await fetch(`${base}/live2d-local/manifest.json`)).status, 404);
     assert.equal((await fetch(`${base}/live2d-local/core/live2dcubismcore.min.js`)).status, 404);
     assert.equal((await fetch(`${base}/avatar.js`)).status, 200);
-    const manifest = await fetch(`${base}/live2d/noor-v6/manifest.json`);
+    const manifest = await fetch(`${base}/live2d/noor-v7/manifest.json`);
     assert.equal(manifest.status, 200);
-    assert.equal((await manifest.json()).version, 'noor-v6');
-    assert.equal((await fetch(`${base}/live2d/noor-v6/models/noor-v6/noor-talk-v6.moc3`)).status, 200);
-    assert.equal((await fetch(`${base}/live2d/noor-v6/private.env`)).status, 404);
+    assert.equal((await manifest.json()).version, 'noor-v7');
+    assert.equal((await fetch(`${base}/live2d/noor-v7/models/noor-v7/noor-secondary-physics.moc3`)).status, 200);
+    assert.equal((await fetch(`${base}/live2d/noor-v7/private.env`)).status, 404);
     const missingOrigin = await fetch(`${base}/api/session`, { method: 'POST' });
     assert.equal(missingOrigin.status, 403);
     const started = await fetch(`${base}/api/session`, {

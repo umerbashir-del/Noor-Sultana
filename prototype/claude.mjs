@@ -1,3 +1,4 @@
+import { logEvent } from './monitor.mjs';
 import { weatherReply } from './weather.mjs';
 
 export class ClaudeUnavailable extends Error {
@@ -66,7 +67,10 @@ export async function askClaude({ apiKey, model, system, messages, maxOutputToke
   } catch {
     throw new ClaudeUnavailable('I couldn’t reach Claude just now. Please try again.');
   }
-  if (!upstream.ok) throw new ClaudeUnavailable('Claude could not answer just now. Please try again.');
+  if (!upstream.ok) {
+    logEvent('claude_upstream_error', { status: upstream.status, kind: 'messages' });
+    throw new ClaudeUnavailable('Claude could not answer just now. Please try again.');
+  }
 
   let result;
   try {
