@@ -23,5 +23,7 @@ scripts/check-hosted-actions.sql
 
 scripts/check-crew-dashboard.sql
 
-# Historical authoring exports stay private; the reviewed live2d/noor-v6 app bundle is included.
+# Authoring exports and the retained V6 rollback source are excluded. V7 is the active application bundle.
 prototype/live2d-local
+
+prototype/live2d/noor-v6

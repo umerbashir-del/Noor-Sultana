@@ -4,32 +4,36 @@ https://github.com/user-attachments/assets/e901922e-e6fd-4516-af0b-4cc5f502c279
 
 **60-second demo** ([download the 1080p file](media/noor-demo.mp4)): Noor answers four passenger questions on the seat-back screen of a fictional flight (CL 204, New York JFK → Tokyo Haneda). Every answer shown is the real local app; flight details and the crew request are demo data.
 
-A visual-novel-style in-flight assistant demo, with original character artwork and product notes.
+A visual-novel-style in-flight assistant demo, with original character artwork.
 
 ## Assets
 
 The `assets/` folder contains the master character sheet, turnaround, facial feature and expression sheets, acting poses, outfit details, color palette, and character consistency guide.
 
-## Documents
+## Passenger knowledge
 
-The `Documents/` folder contains the Noor assistant PRD summary and a link to the source Google Doc.
+The `Documents/knowledge/` folder contains the allowlisted passenger guidance used by the application.
+
+## Selected journeys
+
+Explore destinations → See journeys → View journey → Meet Noor. The four sample JFK journeys are Tokyo (Nov 12), Paris (Nov 24), Dubai (Dec 4), and Rome (Dec 18), 2026. [journeys.mjs](prototype/journeys.mjs) supplies the display, model context and tools from one server-validated record.
 
 ## Prototype
 
-The passenger demo uses Claude to answer questions about a fictional Cloudline Air flight from New York to Tokyo. A separate read-only Open-Meteo lookup supplies real public weather near JFK and Tokyo Haneda. Noor can also schedule a fixed arrival email to a verified passenger address when Resend is configured. The local demo now renders the native Live2D blink rig in the existing cabin scene. Static welcoming and thoughtful poses remain the loading/error fallback.
+The passenger demo uses Claude to answer questions about the selected fictional Noor International Airlines journey from JFK to Tokyo, Paris, Dubai, or Rome. A separate read-only Open-Meteo lookup supplies model weather for the selected airports or a named city. Arrival forecasts may be outside the provider window. Noor can also schedule a fixed arrival email to a verified passenger address when Resend is configured. The local demo now renders the native Live2D blink rig in the existing cabin scene. Static welcoming and thoughtful poses remain the loading/error fallback.
 
 Follow the [setup instructions](prototype/README.md) to add your Anthropic key and start the local server. Open `http://127.0.0.1:4173` to chat; opening the HTML file directly does not connect to the server. The demo does not access live airline services, and its flight details are fictional.
 
 ## Local animated avatar
 
-The loopback passenger demo at `http://127.0.0.1:4173/flight-demo.html` loads the same versioned application runtime as the deployed site from `prototype/live2d/noor-v6/`. `prototype/avatar.js` controls the native V6 rig: blinking, one mouth-open shape, small head tilt, brows, horizontal gaze, restrained body sway and a modest arm gesture. Conversation states ease between verified native poses. The speech controller measures Noor's output audio and resets the mouth when playback stops. Reduced-motion settings neutralize optional poses and automatic blinking while retaining speech-mouth movement. The PNG returns if assets or WebGL fail.
+The loopback passenger demo loads the approved versioned model from `prototype/live2d/noor-v7/`. `prototype/avatar.js` combines native blink, gaze, smiling lids, mouth form, bounded head movement, breathing and restrained hair/scarf physics. The continuous idle uses the choreography approved on October 25. Conversation expressions remain native, including thoughtful; static PNG artwork is reserved for loading or runtime failure. Output audio drives mouth opening and resets it when playback stops. Reduced motion neutralizes optional motion and physics while retaining speech-mouth movement.
 
-The fixed V6 application bundle is authorized for public Noor delivery and includes required Live2D notices. The build verifies every runtime asset and fails if files are missing or changed. Editable rigs, the raw SDK and historical `live2d-local/` exports remain private. Live2D license terms still apply. See [the prototype guide](prototype/README.md#live2d-avatar) for the current limits.
+The build verifies the full runtime inventory, hashes, model/physics references and module imports. V6 remains in source for rollback; only V7 is packaged in fresh generated output. Editable rigs and the raw SDK remain private. Required Live2D notices are retained. This local integration does not imply that the deployed site has been updated. See [the prototype guide](prototype/README.md#live2d-avatar).
 
 ## Launch preparation
 
-The prototype now includes public-origin and secure-cookie settings, per-browser and overall daily usage limits, structured request and Claude token logs, a health check, and retention cleanup. See [the prototype guide](prototype/README.md) for settings and privacy limits. The root [Dockerfile](Dockerfile) prepares a Linux server image; the [Supabase migration](supabase/migrations/20261011_noor_foundation.sql) and [daily cleanup job](supabase/cron.sql) are ready for a future project connection. The live app still uses one local SQLite-backed server until that connection is built and tested.
+The prototype now includes public-origin and secure-cookie settings, per-browser and overall daily usage limits, structured request and Claude token logs, a health check, and retention cleanup. See [the prototype guide](prototype/README.md) for settings and privacy limits. The root [Dockerfile](Dockerfile) prepares a Linux server image; the [Supabase migration](supabase/migrations/20261011_noor_foundation.sql) and [daily cleanup job](supabase/cron.sql) are ready for a future project connection. The local server uses in-process conversation context and SQLite for local application tasks. Hosted chat uses Supabase-backed sessions and messages; provider availability and deployed behavior require separate verification.
 
-## Local artwork workspace
+## Tests
 
-The enclosing local Noor-Sultana folder holds artwork, planning and authoring tools. The user accepted `../artwork/working/noor-likeness-v10b-materials.kra` for animation. The local native V6 rig has verified two-eye blinking, a single mouth-open shape, head tilts, brows, horizontal gaze and a modest left-arm gesture. Speaking uses timed gestures and holds; thinking uses the retained static hand-to-chin drawing. Phoneme mouth shapes and larger arm poses remain unfinished. The fixed V6 runtime is included in Git and hosted builds; private editable rigs and authoring tools remain outside the repository. See the local [project plan](../planning/PROJECT-PLAN.md), [workspace instructions](../AGENTS.md), and [file inventory](../planning/FILES.md). These local workspace links are not part of the remote repository.
+Run `npm test` for offline regression checks across local and hosted handlers, journey isolation, tool grounding, spending limits, voice controls, storage and avatar packaging. Run `npm run build` to verify the public bundle. Provider responses and hosted storage use test doubles; these checks do not establish live service or deployed behavior.

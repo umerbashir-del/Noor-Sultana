@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test": "node --test prototype/*.test.mjs api/*.test.mjs lib/*.test.mjs scripts/*.test.mjs",
     "build": "node scripts/build-vercel.mjs",
     "test:vercel": "node --test api/*.test.mjs",
     "test:agent": "node --test prototype/agent*.test.mjs prototype/trace-store.test.mjs prototype/token-budget.test.mjs prototype/usage-store.test.mjs",
