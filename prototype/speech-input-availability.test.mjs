@@ -7,7 +7,7 @@ const source = await readFile(new URL('./app.js', import.meta.url), 'utf8');
 const section = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
 const setup = section('if (vercelPreview) {', '\nconst conversation =');
 const availability = section('function useHostedTranscription()', '\nasync function startSession(');
-const stop = section("stopButton.addEventListener('click'", "\nform.addEventListener('submit'");
+const toggle = section('function toggleDictation()', "talkButton.addEventListener('click'");
 
 function fixture({ hosted = true, recognition = false, transcription = false } = {}) {
   const row = { hidden: false }, notice = { hidden: true };
@@ -18,47 +18,47 @@ function fixture({ hosted = true, recognition = false, transcription = false } =
     document: { querySelector: () => notice },
     arrivalEmailButton: {}, micDeviceControls: {}, checkMicButton: {}, voiceToggle: {}, voiceStatus: {},
     talkButton: { disabled: true, closest: () => row }, micStatus: {}, sessionReady: true,
-    stopButton: { addEventListener: (_, callback) => { c.stop = callback; } },
+    browserRecognition: undefined, recorder: undefined, startRecording() { c.started = true; },
     stopMicCheck() {}, micSequence: 0, finishRecording() {}, interruptNoor() { c.interrupted = true; },
     clearTranscriptReview() {}, clearRecordingPreview() {}, cancelSynthesis() {},
     responseText: {}, sourceLine: {}, voiceEnabled: true, setPose() {},
   };
   vm.createContext(c);
-  vm.runInContext(setup + availability + stop, c);
+  vm.runInContext(setup + availability + toggle, c);
   return { c, row, notice };
 }
 
-test('hosted Firefox keeps Talk and Stop visible and enables recording when server transcription is available', async () => {
+test('hosted Firefox enables dictation when server transcription is available', async () => {
   const { c, row, notice } = fixture({ transcription: true });
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(row.hidden, false); assert.equal(notice.hidden, false);
   assert.equal(c.canTalk(), true); assert.equal(c.talkButton.disabled, false);
-  assert.match(c.micStatus.textContent, /Replicate/);
-  c.stop(); assert.equal(c.interrupted, true); assert.equal(c.talkButton.disabled, false);
+  assert.equal(c.micStatus.textContent, '');
+  c.toggleDictation(); assert.equal(c.started, true);
   c.sessionReady = false; assert.equal(c.canTalk(), false);
 });
 
-test('missing server transcription leaves typed chat and Stop available with a clear reason', async () => {
+test('missing server transcription disables dictation with a clear reason', async () => {
   const { c, notice } = fixture();
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(c.canTalk(), false); assert.equal(c.talkButton.disabled, true);
   assert.equal(notice.hidden, false); assert.match(c.micStatus.textContent, /unavailable/);
-  c.stop(); assert.equal(c.interrupted, true);
+  c.toggleDictation(); assert.equal(c.started, undefined);
 });
 
 test('supported hosted speech and local transcription still require an active session', async () => {
-  for (const config of [{ recognition: true }, { hosted: false }]) {
+  for (const config of [{ recognition: true }, { hosted: false, transcription: true }]) {
     const { c, row, notice } = fixture(config);
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(row.hidden, false);
-    assert.equal(notice.hidden, true);
+    assert.equal(notice.hidden, config.hosted !== false);
     assert.equal(c.canTalk(), true);
-    c.stop();
-    assert.equal(c.talkButton.disabled, false);
+    c.talkButton.disabled = !c.canTalk();
+    c.toggleDictation();
+    assert.equal(c.started, true);
     c.sessionReady = false;
     assert.equal(c.canTalk(), false);
-    c.stop();
-    assert.equal(c.talkButton.disabled, true);
+
   }
 });
 
@@ -71,7 +71,7 @@ test('Chrome waits for capability detection and prefers the disclosed hosted pat
   assert.equal(c.canTalk(), true);
   assert.equal(c.useHostedTranscription(), true);
   assert.equal(notice.hidden, false);
-  assert.match(c.micStatus.textContent, /Replicate/);
+  assert.equal(c.micStatus.textContent, '');
 });
 
 test('Chrome falls back to browser recognition if hosted transcription is unavailable', async () => {
@@ -80,5 +80,15 @@ test('Chrome falls back to browser recognition if hosted transcription is unavai
   assert.equal(c.canTalk(), true);
   assert.equal(c.useHostedTranscription(), false);
   assert.equal(notice.hidden, true);
-  assert.match(c.micStatus.textContent, /browser speech recognition/);
+  assert.equal(c.micStatus.textContent, '');
+});
+
+
+test('local missing Replicate configuration disables dictation even when browser recognition exists', async () => {
+  const { c } = fixture({ hosted: false, recognition: true });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(c.canTalk(), false);
+  assert.equal(c.talkButton.disabled, true);
+  c.toggleDictation();
+  assert.equal(c.started, undefined);
 });

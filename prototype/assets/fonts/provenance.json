@@ -1,0 +1,78 @@
+{
+  "family": "Barlow",
+  "license": "OFL-1.1",
+  "files": [
+    {
+      "file": "barlow-vietnamese-400.woff2",
+      "source": "https://fonts.gstatic.com/s/barlow/v13/7cHpv4kjgoGqM7E_A8s5ynghnQci.woff2",
+      "sha256": "3dd62fbbcd748024be8d57b0d9d72c0d38b07b35024daad7f108c4f348c34fdc",
+      "bytes": 4624
+    },
+    {
+      "file": "barlow-latin-ext-400.woff2",
+      "source": "https://fonts.gstatic.com/s/barlow/v13/7cHpv4kjgoGqM7E_Ass5ynghnQci.woff2",
+      "sha256": "bac411df68fa3d93ee4b12309c4df075c791d0390b536ca8d803890f889b76b4",
+      "bytes": 9632
+    },
+    {
+      "file": "barlow-latin-400.woff2",
+      "source": "https://fonts.gstatic.com/s/barlow/v13/7cHpv4kjgoGqM7E_DMs5ynghnQ.woff2",
+      "sha256": "7a686e76312866b7d506c103e51a829d4c96a0b4576835128d3b7b53801c095a",
+      "bytes": 15656
+    },
+    {
+      "file": "barlow-vietnamese-500.woff2",
+      "source": "https://fonts.gstatic.com/s/barlow/v13/7cHqv4kjgoGqM7E3_-gs6Fostz0rdom9.woff2",
+      "sha256": "2e9076077ee0824f953a795d32ba020651bf1b55d8d981b1b94c12fa03a95d8b",
+      "bytes": 4764
+    },
+    {
+      "file": "barlow-latin-ext-500.woff2",
+      "source": "https://fonts.gstatic.com/s/barlow/v13/7cHqv4kjgoGqM7E3_-gs6Vostz0rdom9.woff2",
+      "sha256": "7985f1abf1d07b81181090dffaa1f7c3dde03eaa524d41e5bebd39ea5d3090de",
+      "bytes": 9712
+    },
+    {
+      "file": "barlow-latin-500.woff2",
+      "source": "https://fonts.gstatic.com/s/barlow/v13/7cHqv4kjgoGqM7E3_-gs51ostz0rdg.woff2",
+      "sha256": "80e7dc5605dd451bb9b092d7f46704f08bf39d2866cb981aa8caddc016716aed",
+      "bytes": 15640
+    },
+    {
+      "file": "barlow-vietnamese-600.woff2",
+      "source": "https://fonts.gstatic.com/s/barlow/v13/7cHqv4kjgoGqM7E30-8s6Fostz0rdom9.woff2",
+      "sha256": "95da6188105a522bc7a736fac7869b531eaedd9e1ed7efaa318547c87cdaba09",
+      "bytes": 4800
+    },
+    {
+      "file": "barlow-latin-ext-600.woff2",
+      "source": "https://fonts.gstatic.com/s/barlow/v13/7cHqv4kjgoGqM7E30-8s6Vostz0rdom9.woff2",
+      "sha256": "67dfa555a72fdd7506b4e9a97e2b0307b6b15e3d689ef4c372ef47a0597d94db",
+      "bytes": 9888
+    },
+    {
+      "file": "barlow-latin-600.woff2",
+      "source": "https://fonts.gstatic.com/s/barlow/v13/7cHqv4kjgoGqM7E30-8s51ostz0rdg.woff2",
+      "sha256": "488b58098126c00b8fa77f4d58b0a4bc982e81e4c83323c1a73d9f1a67c15971",
+      "bytes": 15832
+    },
+    {
+      "file": "barlow-vietnamese-700.woff2",
+      "source": "https://fonts.gstatic.com/s/barlow/v13/7cHqv4kjgoGqM7E3t-4s6Fostz0rdom9.woff2",
+      "sha256": "892f58db77d3cf09ac112950ed83544d73b6bb1e1b528958eeef38980c1404ef",
+      "bytes": 4796
+    },
+    {
+      "file": "barlow-latin-ext-700.woff2",
+      "source": "https://fonts.gstatic.com/s/barlow/v13/7cHqv4kjgoGqM7E3t-4s6Vostz0rdom9.woff2",
+      "sha256": "2b0e32435d0c87bc0d68f2522c6a7dceb8a2ac9cd0f8d9df7e5c162f778416c4",
+      "bytes": 9888
+    },
+    {
+      "file": "barlow-latin-700.woff2",
+      "source": "https://fonts.gstatic.com/s/barlow/v13/7cHqv4kjgoGqM7E3t-4s51ostz0rdg.woff2",
+      "sha256": "98aa8b5c2582107d73a6f1254f08b152b0c037ae5626a902dd44af8c781e0e6d",
+      "bytes": 15744
+    }
+  ]
+}

@@ -5,13 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#111b2b" />
     <title>Noor · Flight assistant demo</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="/design-tokens.css" />
+  <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <main class="experience" aria-label="Noor flight assistant demo">
       <header class="topbar">
         <a class="brand" href="/" aria-label="Noor International Airlines home">Noor</a>
-        <span class="flight-route">Noor International Airlines · CL 204 <span aria-hidden="true">·</span> JFK → HND</span>
+        <span class="flight-route"></span>
         <button class="info-button" id="flightInfoButton" type="button" aria-expanded="false" aria-controls="flightCard">Flight details</button>
       </header>
 
@@ -25,6 +26,31 @@
             <option value="rome">Rome</option>
           </select>
         </label>
+          <details class="conversation-settings scene-settings">
+          <summary aria-label="Settings" title="Settings"><svg class="control-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 3-.6 2.2-2 .9-2-.6-2 3.5 1.5 1.6v2.8L2.4 15l2 3.5 2-.6 2 .9L9 21h4l.6-2.2 2-.9 2 .6 2-3.5-1.5-1.6v-2.8L19.6 9l-2-3.5-2 .6-2-.9L13 3Z"/><circle cx="11" cy="12" r="3"/></svg></summary>
+          <div class="settings-content">
+          <p class="demo-prompt-hint" id="speechInputNotice" hidden>The microphone records up to 30 seconds. When hosted transcription is available, your recording is sent to Replicate for transcription. Otherwise, supported browsers use browser speech recognition. Review and edit the words before pressing Send. Press the microphone again to finish dictation. End conversation in Settings clears the conversation.</p>
+          <div class="session-controls">
+            <button class="session-button" id="endConversationButton" type="button" disabled>End conversation</button>
+            <span id="sessionStatus" role="status">Starting conversation…</span>
+            <a id="localDemoLink" href="http://127.0.0.1:4173/" hidden>Open the working local demo</a>
+          </div>
+          <div class="voice-controls">
+            <button class="voice-button" id="voiceToggle" type="button" aria-pressed="false">🔇 Voice off</button>
+            <button class="voice-button" id="playReplyButton" type="button" hidden>▶ Play reply</button>
+            <span id="voiceStatus" role="status">Turn on voice to hear Noor’s replies.</span>
+          </div>
+
+          <div class="mic-device-controls" id="micDeviceControls">
+            <label for="micDeviceSelect">Microphone</label>
+            <select id="micDeviceSelect"><option value="">Default microphone</option></select>
+            <button class="voice-button" id="checkMicButton" type="button" hidden>Check microphone</button>
+            <button class="voice-button" id="playRecordingButton" type="button" hidden>▶ Check recording</button>
+          </div>
+          <p class="settings-notice"><a href="live2d/noor-v7/licenses/DISTRIBUTION-NOTICE.md">Live2D runtime terms and notices</a></p>
+          <p class="settings-notice">For urgent help, contact cabin crew.</p>
+          </div>
+          </details>
         <div class="scene-shade" aria-hidden="true"></div>
 
         <div class="scene-caption"><p>Welcome aboard</p><h1>Your in-flight guide.</h1><span>Meet Noor · Noor International Airlines</span></div>
@@ -37,11 +63,11 @@
         <aside class="flight-card" id="flightCard" hidden aria-label="Mock flight details">
           <div class="card-heading"><span>DEMO FLIGHT</span><span>FICTIONAL DATA</span></div>
           <div class="route-line">
-            <div><strong>JFK</strong><small>New York</small><small>Oct 12 · 11:30 AM EDT</small></div>
+            <div><strong>JFK</strong><small>New York</small><small id="flightOriginTime"></small></div>
             <span class="route-plane" aria-hidden="true">✈</span>
-            <div class="route-end"><strong>HND</strong><small>Tokyo Haneda</small><small>Oct 13 · 2:40 PM JST</small></div>
+            <div class="route-end"><strong id="flightDestinationCode"></strong><small id="flightDestinationName"></small><small id="flightDestinationTime"></small></div>
           </div>
-          <p class="flight-meta">Noor International Airlines · CL 204 · Gate 32 · Boarding 10:45 AM</p>
+          <p class="flight-meta"></p>
         </aside>
 
         <section class="conversation" aria-label="Chat with Noor">
@@ -159,41 +185,19 @@
           </details>
           </div></details>
           <div class="composer">
-          <nav class="demo-prompts" aria-label="Demo feature questions"><span class="demo-prompts-label">Try a feature</span><button class="demo-prompt" type="button" data-demo-question="What is the status of our demo flight?" title="What is the status of our demo flight?" disabled>Flight status</button><button class="demo-prompt" type="button" data-demo-question="Show me the FR24 sandbox flight-tracking sample." title="Show me the FR24 sandbox flight-tracking sample." disabled>Flight tracking</button><button class="demo-prompt" type="button" data-demo-question="Will I make my connection, and where do I go for my next flight?" title="Will I make my connection, and where do I go for my next flight?" disabled>Connection</button><button class="demo-prompt" type="button" data-demo-question="Does my demo ticket include a checked bag?" title="Does my demo ticket include a checked bag?" disabled>Baggage</button><button class="demo-prompt" type="button" data-demo-question="Where is baggage claim in the demo airport?" title="Where is baggage claim in the demo airport?" disabled>Airport guide</button><button class="demo-prompt" type="button" data-demo-question="Could someone help with my seat?" title="Could someone help with my seat?" disabled>Crew assistance</button><button class="demo-prompt" type="button" data-demo-question="Are vegetarian meals available, and is there Wi-Fi?" title="Are vegetarian meals available, and is there Wi-Fi?" disabled>Meals & services</button><button class="demo-prompt" type="button" data-demo-question="Help me set a one-minute reminder to check boarding information." title="Help me set a one-minute reminder to check boarding information." disabled>Reminder</button><button class="demo-prompt" type="button" data-demo-question="How do I ask where baggage claim is in Japanese?" title="How do I ask where baggage claim is in Japanese?" disabled>Translate</button><button class="demo-prompt" type="button" data-demo-question="What is the current weather near Tokyo Haneda?" title="What is the current weather near Tokyo Haneda?" disabled>Weather</button></nav><p class="demo-prompt-hint">Click a feature to ask Noor. She selects the tools.</p>
+          <div class="feature-bar"><span class="demo-prompts-label" id="featureLabel">Try a feature</span><button class="feature-scroll" id="featuresPrevious" type="button" aria-label="Scroll features left" aria-controls="featureTrack" disabled>‹</button><nav class="demo-prompts" id="featureTrack" aria-labelledby="featureLabel" tabindex="0"><button class="demo-prompt" type="button" data-demo-question="What is the status of our demo flight?" title="What is the status of our demo flight?" disabled>Flight status</button><button class="demo-prompt" type="button" data-demo-question="Show me the FR24 sandbox flight-tracking sample." title="Show me the FR24 sandbox flight-tracking sample." disabled>Flight tracking</button><button class="demo-prompt" type="button" data-demo-question="Will I make my connection, and where do I go for my next flight?" title="Will I make my connection, and where do I go for my next flight?" disabled>Connection</button><button class="demo-prompt" type="button" data-demo-question="Does my demo ticket include a checked bag?" title="Does my demo ticket include a checked bag?" disabled>Baggage</button><button class="demo-prompt" type="button" data-demo-question="Where is baggage claim in the demo airport?" title="Where is baggage claim in the demo airport?" disabled>Airport guide</button><button class="demo-prompt" type="button" data-demo-question="Could someone help with my seat?" title="Could someone help with my seat?" disabled>Crew assistance</button><button class="demo-prompt" type="button" data-demo-question="Are vegetarian meals available, and is there Wi-Fi?" title="Are vegetarian meals available, and is there Wi-Fi?" disabled>Meals & services</button><button class="demo-prompt" type="button" data-demo-question="Help me set a one-minute reminder to check boarding information." title="Help me set a one-minute reminder to check boarding information." disabled>Reminder</button><button class="demo-prompt" type="button" data-demo-question="How do I ask where baggage claim is in Japanese?" title="How do I ask where baggage claim is in Japanese?" disabled>Translate</button><button class="demo-prompt" type="button" data-demo-question="What is the current weather near Tokyo Haneda?" title="What is the current weather near Tokyo Haneda?" disabled>Weather</button></nav><button class="feature-scroll" id="featuresNext" type="button" aria-label="Scroll features right" aria-controls="featureTrack">›</button></div>
           <form class="message-form" id="messageForm">
             <label class="visually-hidden" for="messageInput">Type a message for Noor</label>
             <input id="messageInput" name="message" type="text" maxlength="500" autocomplete="off" placeholder="Ask Noor something…" disabled />
-            <button class="send-button" type="submit" aria-label="Send message" disabled>Send <span aria-hidden="true">↗</span></button>
+            <div class="dictation-indicator" id="dictationIndicator" hidden><span class="dictation-wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><span>Listening… click the microphone to finish</span></div>
+            <button class="send-button" type="submit" aria-label="Send message" disabled>Send</button>
+            <button class="mic-button dictate-button" id="talkButton" type="button" aria-label="Dictate a message" title="Dictate" aria-pressed="false" aria-describedby="speechInputNotice" disabled><svg class="control-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg></button>
           </form>
           <p class="transcript-review" id="transcriptReview" hidden>Review the recognized words above. Edit them if needed, then press <strong>Send</strong> for Noor to answer.</p>
           <div class="mic-controls" aria-label="Voice conversation controls">
-            <button class="mic-button" id="talkButton" type="button" aria-describedby="speechInputNotice" disabled>🎙 Talk</button>
-            <button class="mic-button" id="doneButton" type="button" disabled>Done</button>
-            <button class="mic-button stop-button" id="stopButton" type="button">Stop</button>
-            <span id="micStatus" role="status">Press Talk to ask Noor a question.</span>
-          </div>
-          <p class="demo-prompt-hint" id="speechInputNotice" hidden>Talk records up to 30 seconds. When hosted transcription is available, your recording is sent to Replicate for transcription. Otherwise, supported browsers use browser speech recognition. Review and edit the words before pressing Send. Stop cancels and discards the recording.</p>
-          <details class="conversation-settings"><summary>Voice &amp; conversation settings</summary>
-          <div class="session-controls">
-            <button class="session-button" id="endConversationButton" type="button" disabled>End conversation</button>
-            <span id="sessionStatus" role="status">Starting conversation…</span>
-            <a id="localDemoLink" href="http://127.0.0.1:4173/" hidden>Open the working local demo</a>
-          </div>
-          <div class="voice-controls">
-            <button class="voice-button" id="voiceToggle" type="button" aria-pressed="false">🔇 Voice off</button>
-            <button class="voice-button" id="playReplyButton" type="button" hidden>▶ Play reply</button>
-            <span id="voiceStatus" role="status">Turn on voice to hear Noor’s replies.</span>
+            <span id="micStatus" role="status"></span>
           </div>
 
-          <div class="mic-device-controls" id="micDeviceControls">
-            <label for="micDeviceSelect">Microphone</label>
-            <select id="micDeviceSelect"><option value="">Default microphone</option></select>
-            <button class="voice-button" id="checkMicButton" type="button" hidden>Check microphone</button>
-            <button class="voice-button" id="playRecordingButton" type="button" hidden>▶ Check recording</button>
-          </div>
-          </details>
-          <p class="demo-note">Noor uses Live2D Cubism. <a href="live2d/noor-v6/licenses/DISTRIBUTION-NOTICE.md">Runtime terms and notices</a> apply to the bundled animation components.</p>
-          <p class="demo-note">For urgent help, contact cabin crew.</p>
           </div>
         </section>
       </section>
@@ -227,7 +231,8 @@
         <button id="confirmScheduleButton" type="button">Confirm schedule</button>
       </div>
     </dialog>
-    <script src="./app.js" defer></script>
+    <script src="./app.js" type="module"></script>
+    <script src="./ui-controls.js" defer></script>
     <script src="./avatar.js" type="module"></script>
   </body>
 </html>

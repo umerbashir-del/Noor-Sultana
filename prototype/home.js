@@ -1,3 +1,4 @@
+import { formatJourneyTime, journeyDuration } from './journeys.mjs';
 import { findTrips } from './home-data.mjs';
 
 const track = document.querySelector('#tripTrack');
@@ -26,7 +27,7 @@ function renderTrips() {
   visibleTrips.forEach((trip) => {
     const card = document.createElement('article');
     card.className = 'trip-card';
-    card.innerHTML = `<div class="trip-photo"><img loading="lazy" src="${trip.image}" alt="${trip.city} city view" /><span class="trip-tag">${trip.highlight}</span></div><div class="trip-body"><div><span class="trip-country">${trip.country}</span><h3>${trip.city}</h3></div><span class="trip-code">${trip.airport}</span></div><div class="trip-bottom"><div><small>FROM JFK · ${trip.date.toUpperCase()}</small><strong>From $${trip.fare}<span> / person*</span></strong></div><button type="button" data-trip="${trip.id}" aria-label="View ${trip.city} sample trip">↗</button></div>`;
+    card.innerHTML = `<div class="trip-photo"><img loading="lazy" src="${trip.image}" alt="${trip.city} city view" /><span class="trip-tag">${trip.highlight}</span></div><div class="trip-body"><div><span class="trip-country">${trip.country}</span><h3>${trip.city}</h3></div><span class="trip-code">${trip.airport}</span></div><div class="trip-bottom"><div><small>FROM JFK · ${trip.date.toUpperCase()}</small><strong>${journeyDuration(trip)}</strong></div><button type="button" data-trip="${trip.id}" aria-label="View ${trip.city} sample trip">View journey</button></div>`;
     track.append(card);
   });
   document.querySelector('#noResults').hidden = visibleTrips.length > 0;
@@ -40,6 +41,7 @@ form.addEventListener('submit', (event) => {
   visibleTrips = findTrips({ destination: form.elements.destination.value, month: form.elements.month.value });
   renderTrips();
   detail.hidden = true;
+  document.querySelectorAll('[data-journey-shortcut], #meetJourney').forEach(link => { link.href = '#plan'; });
   document.querySelector('#trips').scrollIntoView({ behavior: 'smooth' });
 });
 previous.addEventListener('click', () => showCard(currentIndex - 1));
@@ -65,10 +67,41 @@ track.addEventListener('click', (event) => {
   document.querySelector('#detailImage').alt = `${trip.city} city view`;
   document.querySelector('#detailTitle').textContent = `${trip.city}, ${trip.country}`;
   document.querySelector('#detailLine').textContent = trip.line;
-  document.querySelector('#detailRoute').textContent = `JFK → ${trip.airport}`;
-  document.querySelector('#detailDate').textContent = trip.date;
-  document.querySelector('#detailFare').textContent = `From $${trip.fare} / person*`;
+  document.querySelector('#detailRoute').textContent = `JFK → ${trip.airport} · ${journeyDuration(trip)}`;
+  document.querySelector('#detailDate').textContent = formatJourneyTime(trip.departureAt, trip.origin.timeZone);
+  document.querySelector('#detailArrival').textContent = formatJourneyTime(trip.arrivalAt, trip.timeZone);
+  const journeyUrl = `/flight-demo.html?journey=${trip.id}`;
+  document.querySelector('#meetJourney').href = journeyUrl;
+  document.querySelectorAll('[data-journey-shortcut]').forEach(link => { link.href = journeyUrl; });
   detail.hidden = false;
   detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
 renderTrips();
+
+// A disclosure menu keeps the existing section links available on small screens.
+const menuToggle = document.querySelector('#homeMenuToggle');
+const navigation = document.querySelector('#homeNavigation');
+const mobileNavigation = matchMedia('(max-width: 700px)');
+function closeNavigation(returnFocus = false) {
+  menuToggle.setAttribute('aria-expanded', 'false');
+  menuToggle.setAttribute('aria-label', 'Open navigation');
+  navigation.dataset.open = 'false';
+  if (returnFocus) menuToggle.focus();
+}
+menuToggle.hidden = false;
+menuToggle.addEventListener('click', () => {
+  const open = menuToggle.getAttribute('aria-expanded') !== 'true';
+  menuToggle.setAttribute('aria-expanded', String(open));
+  menuToggle.setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation');
+  navigation.dataset.open = String(open);
+});
+navigation.addEventListener('click', (event) => {
+  if (event.target.closest('a') && mobileNavigation.matches) closeNavigation(true);
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && menuToggle.getAttribute('aria-expanded') === 'true') closeNavigation(true);
+});
+document.addEventListener('pointerdown', (event) => {
+  if (!navigation.contains(event.target) && !menuToggle.contains(event.target)) closeNavigation();
+});
+mobileNavigation.addEventListener('change', () => closeNavigation());

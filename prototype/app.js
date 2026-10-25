@@ -1,3 +1,6 @@
+import { getJourney, flightLabel, formatJourneyTime, journeyDuration } from './journeys.mjs';
+const selectedJourney = getJourney(new URLSearchParams(window.location.search).get('journey'));
+if (!selectedJourney) window.location.replace('/#plan');
 function revealPassengerTool(data) {
  const toolId = data.translation ? 'translatorPanel' : data.crewAssistance ? 'crewPanel' : data.passengerReminders ? 'reminderPanel' : data.emailDraft ? 'emailCard' : data.weather ? 'weatherCard' : null;
  if (!toolId) return;
@@ -28,6 +31,7 @@ const baggageGuidanceButton = document.querySelector('#baggageGuidanceButton');
 const weatherAvailabilityButton = document.querySelector('#weatherAvailabilityButton');
 const arrivalNoteButton = document.querySelector('#arrivalNoteButton');
 const weatherNowButton = document.querySelector('#weatherNowButton');
+if (selectedJourney) weatherNowButton.textContent = `${selectedJourney.city} weather now`;
 const weatherArrivalButton = document.querySelector('#weatherArrivalButton');
 const otherWeatherButton = document.querySelector('#otherWeatherButton');
 const arrivalEmailButton = document.querySelector('#arrivalEmailButton');
@@ -77,12 +81,23 @@ backgroundSelect?.addEventListener('change', () => {
 const noor = document.querySelector('#noorWrap');
 const flightCard = document.querySelector('#flightCard');
 const flightInfoButton = document.querySelector('#flightInfoButton');
+if (selectedJourney) {
+  const journey = selectedJourney;
+  document.querySelector('.flight-route').textContent = `Noor International Airlines · ${flightLabel(journey)} · JFK → ${journey.airport}`;
+  document.querySelector('#flightOriginTime').textContent = formatJourneyTime(journey.departureAt, journey.origin.timeZone);
+  document.querySelector('#flightDestinationCode').textContent = journey.airport;
+  document.querySelector('#flightDestinationName').textContent = journey.airportName;
+  document.querySelector('#flightDestinationTime').textContent = formatJourneyTime(journey.arrivalAt, journey.timeZone);
+  document.querySelector('.flight-meta').textContent = `Noor International Airlines · ${flightLabel(journey)} · Gate ${journey.gate} · Boarding ${formatJourneyTime(journey.boardingAt, journey.origin.timeZone, { date: false })} · ${journeyDuration(journey)}`;
+  const weatherFeature = document.querySelector('[data-demo-question="What is the current weather near Tokyo Haneda?"]');
+  if (weatherFeature) { weatherFeature.dataset.demoQuestion = `What is the current weather near ${journey.airportName}?`; weatherFeature.title = weatherFeature.dataset.demoQuestion; }
+}
+
 const voiceToggle = document.querySelector('#voiceToggle');
 const playReplyButton = document.querySelector('#playReplyButton');
 const voiceStatus = document.querySelector('#voiceStatus');
 const talkButton = document.querySelector('#talkButton');
-const doneButton = document.querySelector('#doneButton');
-const stopButton = document.querySelector('#stopButton');
+const dictationIndicator = document.querySelector('#dictationIndicator');
 const micStatus = document.querySelector('#micStatus');
 const micDeviceControls = document.querySelector('#micDeviceControls');
 const micDeviceSelect = document.querySelector('#micDeviceSelect');
@@ -92,7 +107,7 @@ const transcriptReview = document.querySelector('#transcriptReview');
 const vercelPreview = document.documentElement.dataset.vercelPreview === 'true';
 const BrowserSpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 let hostedTranscriptionAvailable = false;
-let hostedTranscriptionChecking = vercelPreview;
+let hostedTranscriptionChecking = true;
 
 if (vercelPreview) {
   arrivalEmailButton.hidden = true;
@@ -101,6 +116,8 @@ if (vercelPreview) {
   voiceToggle.disabled = true;
   voiceStatus.textContent = 'Checking Chatterbox voice…';
   micStatus.textContent = 'Checking microphone transcription…';
+}
+{
   void fetch('/api/transcribe').then(async (response) => {
     const data = await response.json();
     hostedTranscriptionAvailable = response.ok && data.available === true;
@@ -109,11 +126,9 @@ if (vercelPreview) {
     talkButton.disabled = !canTalk();
     const notice = document.querySelector('#speechInputNotice');
     if (notice) notice.hidden = !useHostedTranscription() && Boolean(BrowserSpeechRecognition);
-    micStatus.textContent = useHostedTranscription()
-      ? 'Press Talk to record. Audio is sent to Replicate for transcription; review the words before Send.'
-      : BrowserSpeechRecognition
-        ? 'Press Talk to use browser speech recognition; review the words before Send.'
-        : 'Microphone transcription is unavailable. You can still type your question.';
+    micStatus.textContent = useHostedTranscription() || (vercelPreview && BrowserSpeechRecognition)
+      ? ''
+      : 'Microphone transcription is unavailable. You can still type your question.';
   });
 }
 
@@ -127,7 +142,7 @@ const voiceAudio = new Audio();
 let voiceContext;
 let voiceSource;
 let voiceEnabled = false;
-let voiceAvailable = !vercelPreview;
+let voiceAvailable = false;
 let voiceRequest;
 let voiceUrl;
 let voiceGeneration = 0;
@@ -269,7 +284,7 @@ async function checkMicrophone() {
     const chunks = [];
     activeRecorder.addEventListener('dataavailable', (event) => {
       if (event.data.size) chunks.push(event.data);
-      if (vercelPreview && chunks.reduce((sum, part) => sum + part.size, 0) > 900000) finishRecording(false);
+      if (hostedTranscriptionAvailable && chunks.reduce((sum, part) => sum + part.size, 0) > 900000) finishRecording(false);
     });
     activeRecorder.addEventListener('stop', () => {
       stream.getTracks().forEach((track) => track.stop());
@@ -374,7 +389,7 @@ async function speakReply(text) {
         source.start();
         setAvatarState('speaking');
         speechMouth?.trackSource(source, voiceContext);
-        voiceStatus.textContent = 'Noor is speaking. Press Stop to interrupt.';
+        voiceStatus.textContent = 'Noor is speaking. Turn Voice off in Settings to stop playback.';
         return;
       } catch {
         if (generation !== voiceGeneration || !voiceEnabled) return;
@@ -392,7 +407,7 @@ async function speakReply(text) {
     voiceUrl = URL.createObjectURL(audio);
     voiceAudio.src = voiceUrl;
     bindSpeechPlaybackState(generation, voiceUrl);
-    voiceStatus.textContent = 'Noor is speaking. Press Stop to interrupt.';
+    voiceStatus.textContent = 'Noor is speaking. Turn Voice off in Settings to stop playback.';
     try { await voiceAudio.play(); }
     catch {
       if (generation !== voiceGeneration || !voiceEnabled) return;
@@ -514,7 +529,7 @@ async function playSpeechSegment(audio, generation, signal) {
         source.connect(voiceContext.destination); source.onended = () => finish();
         voiceSource = source; source.start();
         speechMouth?.trackSource(source, voiceContext);
-        setAvatarState('speaking'); voiceStatus.textContent = 'Noor is speaking. Press Stop to interrupt.';
+        setAvatarState('speaking'); voiceStatus.textContent = 'Noor is speaking. Turn Voice off in Settings to stop playback.';
         return;
       } catch {
         if (source) { source.onended = null; try { source.stop(); } catch {} source.disconnect(); if (voiceSource === source) voiceSource = undefined; }
@@ -547,7 +562,7 @@ playReplyButton.addEventListener('click', async () => {
     await voiceAudio.play();
     if (generation !== voiceGeneration || !voiceEnabled) return;
     playReplyButton.hidden = true;
-    voiceStatus.textContent = 'Noor is speaking. Press Stop to interrupt.';
+    voiceStatus.textContent = 'Noor is speaking. Turn Voice off in Settings to stop playback.';
   } catch {
     if (generation !== voiceGeneration || !voiceEnabled) return;
     speechMouth?.stop();
@@ -574,7 +589,6 @@ function setVoiceEnabled(enabled) {
 voiceToggle.addEventListener('click', () => setVoiceEnabled(!voiceEnabled));
 
 async function loadVoiceAvailability() {
-  if (!vercelPreview) return;
   try {
     const response = await fetch('/api/speak');
     const config = await response.json();
@@ -583,7 +597,7 @@ async function loadVoiceAvailability() {
   voiceToggle.disabled = !voiceAvailable;
   voiceStatus.textContent = voiceAvailable
     ? 'Turn on Chatterbox voice to hear Noor’s replies.'
-    : 'Chatterbox voice is not connected yet. You can still talk and read Noor’s replies.';
+    : 'Chatterbox voice is not connected yet. You can still type and read Noor’s replies.';
 }
 
 function setAvatarState(state) {
@@ -630,11 +644,12 @@ function useHostedTranscription() {
 }
 
 function canTalk() {
-  return sessionReady && (!vercelPreview || (!hostedTranscriptionChecking
-    && (useHostedTranscription() || Boolean(BrowserSpeechRecognition))));
+  return sessionReady && !hostedTranscriptionChecking
+    && (useHostedTranscription() || (vercelPreview && Boolean(BrowserSpeechRecognition)));
 }
 
 async function startSession(successMessage = 'Conversation ready. End it to clear this screen.') {
+  if (!selectedJourney) return;
   if (window.location.protocol === 'file:') {
     sessionStatus.textContent = 'Open the local demo through Noor’s server to type or talk.';
     localDemoLink.hidden = false;
@@ -658,7 +673,7 @@ async function startSession(successMessage = 'Conversation ready. End it to clea
   endConversationButton.disabled = true;
   sessionStatus.textContent = 'Starting conversation…';
   try {
-    const response = await fetch('/api/session', { method: 'POST' });
+    const response = await fetch('/api/session?journey=' + encodeURIComponent(selectedJourney.id), { method: 'POST' });
     if (!response.ok) throw new Error('Session unavailable');
     sessionReady = true;
     idleDeadline = Date.now() + 15 * 60_000;
@@ -708,10 +723,10 @@ function clearConversationDisplay() {
   clearEmailDraft();
   setPose('welcome');
   noor.removeAttribute('aria-busy');
-  micStatus.textContent = 'Press Talk to ask Noor a question.';
+  micStatus.textContent = '';
   voiceStatus.textContent = voiceEnabled ? 'Voice on' : voiceAvailable
     ? 'Turn on voice to hear Noor’s replies.'
-    : 'Chatterbox voice is not connected yet. You can still talk and read Noor’s replies.';
+    : 'Chatterbox voice is not connected yet. You can still type and read Noor’s replies.';
 }
 
 function clearEmailDraft() {
@@ -957,8 +972,8 @@ boardingTimeButton.addEventListener('click', () => void sendMessage('What time d
 baggageGuidanceButton.addEventListener('click', () => void sendMessage('What general guidance do you have about carry-on and checked baggage?'));
 weatherAvailabilityButton.addEventListener('click', () => void sendMessage('What weather information can you check?'));
 arrivalNoteButton.addEventListener('click', () => void sendMessage('Show me the fixed arrival note.'));
-weatherNowButton.addEventListener('click', () => void sendMessage('What is the weather near Tokyo Haneda now?'));
-weatherArrivalButton.addEventListener('click', () => void sendMessage('What is the weather near Tokyo Haneda at the sample arrival?'));
+weatherNowButton.addEventListener('click', () => void sendMessage(`What is the weather near ${selectedJourney.airportName} now?`));
+weatherArrivalButton.addEventListener('click', () => void sendMessage('What is the weather at our destination at the sample arrival?'));
 otherWeatherButton.addEventListener('click', () => {
   input.value = 'What is the current weather in Paris, France?';
   input.focus();
@@ -988,7 +1003,18 @@ function cancelPendingChat() {
   noor.removeAttribute('aria-busy');
 }
 
+function setDictationRecording(active) {
+  dictationIndicator.hidden = !active;
+  input.hidden = active;
+  talkButton.setAttribute('aria-pressed', String(active));
+  const label = active ? 'Finish dictation' : 'Dictate a message';
+  talkButton.setAttribute('aria-label', label);
+  talkButton.title = active ? 'Finish dictation' : 'Dictate';
+  if (active) talkButton.disabled = false;
+}
+
 function finishRecording(discard = false) {
+  setDictationRecording(false);
   if (browserRecognition || recorder?.state === 'recording') setAvatarState(discard ? 'idle' : 'thoughtful');
   if (discard) discardRecording = true;
   if (browserRecognition) {
@@ -1001,14 +1027,12 @@ function finishRecording(discard = false) {
       if (discard) browserRecognition.abort();
       else browserRecognition.stop();
     } catch { /* Recognition may already have stopped. */ }
-    doneButton.disabled = true;
     talkButton.disabled = true;
     return;
   }
   if (!recorder || recorder.state === 'inactive') return;
   clearTimeout(recordTimeout);
   recorder.stop();
-  doneButton.disabled = true;
   talkButton.disabled = true;
 }
 
@@ -1030,7 +1054,7 @@ function clearTranscriptReview(clearText = false) {
 
 async function sendMessage(message) {
   if (browserRecognition) {
-    micStatus.textContent = 'Press Done and review the transcript before sending.';
+    micStatus.textContent = 'Press the microphone again and review the transcript before sending.';
     return;
   }
   const cleanMessage = message.trim();
@@ -1086,7 +1110,7 @@ async function sendMessage(message) {
     const response = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ useTools: true, message: cleanMessage, demoScenario: document.querySelector('#demoFlightScenario')?.value || 'on-time', demoFare: document.querySelector('#demoBaggageFare')?.value || 'standard', demoMealStock: document.querySelector('#demoMealStock')?.value || 'available', demoLanguage: document.querySelector('#demoTranslationLanguage')?.value || 'japanese' }),
+      body: JSON.stringify({ useTools: true, expectedJourneyId: selectedJourney.id, message: cleanMessage, demoScenario: document.querySelector('#demoFlightScenario')?.value || 'on-time', demoFare: document.querySelector('#demoBaggageFare')?.value || 'standard', demoMealStock: document.querySelector('#demoMealStock')?.value || 'available', demoLanguage: document.querySelector('#demoTranslationLanguage')?.value || 'japanese' }),
       signal: controller.signal,
     });
     const data = await response.json();
@@ -1123,7 +1147,7 @@ async function sendMessage(message) {
     }
     conversation.push({ role: 'assistant', content: data.reply });
     pendingUserMessage = undefined;
-    if (fromTranscript) micStatus.textContent = 'Question sent. Press Talk to ask another one.';
+    if (fromTranscript) micStatus.textContent = 'Question sent. Press the microphone to ask another one.';
     idleDeadline = Date.now() + 15 * 60_000;
     scheduleSessionEnd();
     animateNoor();
@@ -1174,7 +1198,7 @@ async function sendMessage(message) {
 async function transcribeForReview(blob) {
   setAvatarState('thoughtful');
   keepRecordingPreview(blob);
-  if (vercelPreview && blob.size > 900000) {
+  if (hostedTranscriptionAvailable && blob.size > 900000) {
     setAvatarState('idle');
     micStatus.textContent = 'Recording is too large. Record a shorter question, or type it.';
     talkButton.disabled = !canTalk();
@@ -1203,7 +1227,7 @@ async function transcribeForReview(blob) {
     const transcript = typeof data.text === 'string' ? data.text.trim() : '';
     if (!transcript) {
       setAvatarState('idle');
-      micStatus.textContent = 'No speech was recognized. Press Talk to try again, or type your question.';
+      micStatus.textContent = 'No speech was recognized. Press the microphone to try again, or type your question.';
       return;
     }
     reviewTranscript(transcript);
@@ -1226,7 +1250,7 @@ function reviewTranscript(transcript) {
   transcriptReview.hidden = false;
   micStatus.textContent = transcript.length > input.maxLength
     ? 'Transcript is too long. Shorten it before pressing Send.'
-    : 'Transcript ready. Check or edit it, then press Send. Press Talk to try again or Stop to discard it.';
+    : 'Transcript ready. Check or edit it, then press Send. Press the microphone to try again, or edit the text to discard it.';
   input.focus();
 }
 
@@ -1249,12 +1273,14 @@ function startBrowserRecognition() {
   let recognitionError = false;
   discardRecording = false;
   talkButton.disabled = true;
-  doneButton.disabled = false;
   sendButton.disabled = true;
   micStatus.textContent = 'Requesting microphone access…';
   recognition.onstart = () => {
-    if (browserRecognition === recognition && session === micSequence && !discardRecording) setAvatarState('listening');
-    if (session === micSequence) micStatus.textContent = 'Listening… words appear in the question field. Press Done when you finish.';
+    if (browserRecognition === recognition && session === micSequence && !discardRecording) {
+      setAvatarState('listening');
+      setDictationRecording(true);
+    }
+    if (session === micSequence) micStatus.textContent = 'Listening… press the microphone again when you finish.';
   };
   recognition.onresult = (event) => {
     if (browserRecognition !== recognition || session !== micSequence || discardRecording) return;
@@ -1267,7 +1293,7 @@ function startBrowserRecognition() {
       setAvatarState('error');
       micStatus.textContent = event.error === 'not-allowed'
         ? 'Microphone permission was denied. Check browser settings, or type your question.'
-        : 'Speech was not recognized. Press Talk to try again, or type your question.';
+        : 'Speech was not recognized. Press the microphone to try again, or type your question.';
     }
   };
   recognition.onend = () => {
@@ -1276,13 +1302,13 @@ function startBrowserRecognition() {
     browserRecognition = undefined;
     if (session !== micSequence) return;
     setAvatarState(recognitionError ? 'error' : 'idle');
-    doneButton.disabled = true;
+    setDictationRecording(false);
     talkButton.disabled = !canTalk();
     sendButton.disabled = !sessionReady;
     if (discardRecording || recognitionError || !transcript) {
       input.value = browserRecognitionDraft ?? '';
       browserRecognitionDraft = undefined;
-      if (!discardRecording && !recognitionError) micStatus.textContent = 'No speech was recognized. Press Talk to try again, or type your question.';
+      if (!discardRecording && !recognitionError) micStatus.textContent = 'No speech was recognized. Press the microphone to try again, or type your question.';
       return;
     }
     browserRecognitionDraft = undefined;
@@ -1298,7 +1324,7 @@ function startBrowserRecognition() {
     browserRecognition = undefined;
     input.value = browserRecognitionDraft ?? '';
     browserRecognitionDraft = undefined;
-    doneButton.disabled = true;
+    setDictationRecording(false);
     talkButton.disabled = !canTalk();
     sendButton.disabled = !sessionReady;
     setAvatarState('error');
@@ -1343,9 +1369,10 @@ async function startRecording() {
     discardRecording = false;
     activeRecorder.addEventListener('dataavailable', (event) => {
       if (event.data.size) chunks.push(event.data);
-      if (vercelPreview && chunks.reduce((sum, part) => sum + part.size, 0) > 900000) finishRecording(false);
+      if (hostedTranscriptionAvailable && chunks.reduce((sum, part) => sum + part.size, 0) > 900000) finishRecording(false);
     });
     activeRecorder.addEventListener('stop', () => {
+      if (session === micSequence) setDictationRecording(false);
       const blob = new Blob(chunks, { type: activeRecorder.mimeType || mimeType || 'audio/webm' });
       stream.getTracks().forEach((track) => track.stop());
       if (micStream === stream) micStream = undefined;
@@ -1358,8 +1385,8 @@ async function startRecording() {
     }, { once: true });
     activeRecorder.start(250);
     setAvatarState('listening');
-    doneButton.disabled = false;
-    micStatus.textContent = 'Listening… press Done when you finish.';
+    setDictationRecording(true);
+    micStatus.textContent = 'Listening… press the microphone again when you finish.';
     recordTimeout = window.setTimeout(() => {
       micStatus.textContent = 'Recording reached 30 seconds. Preparing your transcript…';
       finishRecording(false);
@@ -1371,33 +1398,23 @@ async function startRecording() {
     micDeviceSelect.disabled = false;
     recorder = undefined;
     talkButton.disabled = !canTalk();
-    doneButton.disabled = true;
+    setDictationRecording(false);
     sendButton.disabled = !sessionReady;
     setAvatarState('error');
     micStatus.textContent = 'Microphone access failed. Check browser permission, or type your question.';
   }
 }
 
-talkButton.addEventListener('click', startRecording);
-doneButton.addEventListener('click', () => {
-  micStatus.textContent = 'Finishing your recording…';
-  finishRecording(false);
-});
-stopButton.addEventListener('click', () => {
-  stopMicCheck();
-  micSequence += 1;
-  finishRecording(true);
-  interruptNoor();
-  clearTranscriptReview(true);
-  clearRecordingPreview();
-  void cancelSynthesis();
-  responseText.textContent = 'Stopped. Ask another question when you’re ready.';
-  sourceLine.textContent = 'Stopped';
-  voiceStatus.textContent = voiceEnabled ? 'Voice on' : 'Voice off';
-  micStatus.textContent = canTalk() ? 'Stopped. Press Talk to ask another question.' : 'Stopped. Type another question when you’re ready.';
-  talkButton.disabled = !canTalk();
-  setPose('welcome');
-});
+function toggleDictation() {
+  if (talkButton.disabled) return;
+  if (browserRecognition || recorder?.state === 'recording') {
+    micStatus.textContent = 'Finishing dictation…';
+    finishRecording(false);
+  } else {
+    void startRecording();
+  }
+}
+talkButton.addEventListener('click', toggleDictation);
 
 form.addEventListener('submit', (event) => {
   event.preventDefault();
