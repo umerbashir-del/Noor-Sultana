@@ -12,6 +12,106 @@ Optional live evaluation uses the running local server and its existing usage li
 
 A successful trace means the harness completed; it does not prove that a factual answer used sufficient evidence. Inspect failures and improve scenario assertions as behavior evolves.
 
+## Repeatable single-turn baseline
+
+From the repository root, run the offline HTTP baseline:
+
+```sh
+node scripts/baseline-chat.mjs
+```
+
+This starts an isolated loopback server on a free port, asks the fixed Tokyo flight-status question, inspects its persisted trace, ends the session, and closes the server. It uses scripted Claude responses and token counts. Its timings are a local integration check, not provider latency or cost measurements.
+
+After confirming the configured Anthropic key belongs to the personal organization (never CodePath), the explicitly requested live equivalent is:
+
+```sh
+node scripts/baseline-chat.mjs --live
+```
+
+Live mode uses the existing app key/model and spends API credits for one synthetic turn, which can contain multiple model rounds. It allows only the existing Claude counting/Messages endpoints and its own loopback server. Both modes preserve the usage ledger and visitor identity across runs; do not remove them to reset allowances. They do not enable speech, email, hosted tracing, or deployment. Local passenger prompt caching now follows `NOOR_PROMPT_CACHE` (enabled unless set to `0`).
+
+Reports and traces are under ignored `prototype/data/tracing-baseline/offline/` or `live/`. Use `--output=/absolute/directory` to select a separate persistent data directory. `report.json` contains fixed scenario identity, HTTP elapsed time, trace ID, sanitized events, and pass/fail. It excludes chat text and cookies. `visitor.json` holds the private synthetic visitor identity separately. Reports are overwritten on each run and do not have the trace store's automatic retention; remove reports when no longer needed. A single live result is a baseline sample, not a latency distribution or browser/voice acceptance.
+
+Model-end events now distinguish `inputTokens` (the preflight full-input count) from `uncachedInputTokens`, `outputTokens`, `cacheCreationInputTokens`, and `cacheReadInputTokens` (provider-reported usage). Run-end events total each known usage category across model rounds; missing usage stays absent, rather than becoming zero. Failed model calls omit uncertain run totals. The existing aggregate `tokens` still counts cached tokens for usage caps; it is not a dollar-cost estimate.
+
+Local budget wrappers also record `countDurationMs`, `reservationDurationMs`, `providerDurationMs`, and `settlementDurationMs`. Model-event `durationMs` includes the entire budgeted call; the phase fields explain that time. `providerDurationMs` includes response-body reading/parsing. HTTP elapsed time in the report additionally covers request handling and conversation commit. Prompt/response content and credentials remain excluded by the trace allowlist. Existing trace-failure behavior, retention, and spending limits remain in place.
+
+## Local passenger prompt caching
+
+The local `/api/chat` path enables an explicit five-minute cache breakpoint by default. Set `NOOR_PROMPT_CACHE=0` before starting the server to disable it. Hosted Vercel handlers retain their current behavior; they do not opt into this cache flag.
+
+`agent-loop.mjs` captures the stable instructions plus selected fictional journey before adding per-turn efficiency rules, session memory and required-evidence context. `prompt-cache.mjs` represents that exact prefix as a text block with `cache_control: {type: "ephemeral", ttl: "5m"}`, followed by an unmarked dynamic text block. Concatenating the blocks reproduces the original system text exactly. Passenger messages and tool results are not explicitly cached. The provider also includes preceding tool definitions in the cached prefix: Noor's existing question-specific tool filtering is preserved, so changes to the offered tools reduce reuse. Different journeys or revised fixed instructions also use different prefixes. No padding is added for short prompts; provider minimum-length rules still apply.
+
+Token counting and Messages use the same block conversion. Full counted input is still reserved, and actual input, output, cache-write and cache-read tokens all count toward the existing usage ledger. Caching changes provider billing, not Noor's allowance policy. Provider errors retain uncertain reservations; no automatic uncached retry is added.
+
+To compare two fresh-session turns with the same question and the original live baseline:
+
+```sh
+node scripts/baseline-chat.mjs --live --compare-cache
+```
+
+This spends API credits for two synthetic turns using the previously confirmed personal key. It preserves the same visitor and ledger used by the baseline, saves `prototype/data/tracing-baseline/live/cache-comparison.json`, and leaves the original `report.json` intact. It passes only when both chats produce grounded flight-status evidence, the first model call writes a prefix with no cache read, and the second chat's first model call reads cached tokens. A warm prefix left from a recent run is reported as a failed cold-start comparison, never mislabeled a miss. The second model round of the first chat can already read the cache created by its first round.
+
+`node scripts/baseline-chat.mjs --compare-cache` checks the runner with a scripted in-memory cache. This is orchestration evidence only; it cannot establish real provider caching or latency. Both modes preserve limits configured for the existing loopback app, including an already-configured local unlimited setting; neither changes that setting. Input-charge equivalent tokens use the documented five-minute write multiplier (1.25) and Haiku read multiplier (0.1); they exclude output charges and are not a bill. Single samples cannot establish a repeatable speed improvement. See [Anthropic prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching).
+
+### Verified October 27 sample
+
+The live comparison passed on `claude-haiku-5-5`: the initial model round wrote 4,661 tokens with zero reads, its second round read 4,661, and the warm turn read 9,322 across both rounds. All chats used the same synthetic flight-status question in fresh sessions, two model rounds, one successful tool call and grounded evidence.
+
+| Whole turn | HTTP ms | Uncached input | Cache writes | Cache reads | Output |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Original baseline | 2,556 | 10,946 | 0 | 0 | 183 |
+| Cold | 3,124 | 1,625 | 4,661 | 4,661 | 194 |
+| Warm | 3,227 | 1,621 | 0 | 9,322 | 185 |
+
+The warm input-charge equivalent is approximately 76.7% below the original baseline using the documented multipliers. This excludes output charges and is not billed dollars. The warm request was slower in this sample, so no latency improvement is established. The original baseline report is preserved. Full sanitized events are in ignored `data/tracing-baseline/live/cache-comparison.json`; offline tests (397) and the build passed. Browser/voice behavior and hosted execution were not exercised by these HTTP checks.
+
+## Model and tool call hooks
+
+`answerWithTools` now runs `beforeModel`, `afterModel`, `beforeTool`, and `afterTool` at its existing call boundaries. This is application code, not Claude Agent SDK middleware. The local HTTP path reaches these boundaries without any new configuration. Trusted server-side callers can register observers through `hooks` and required pre-call checks through `requiredHooks`; passenger request fields cannot register hooks.
+
+```js
+await answerWithTools({
+  // Existing server-owned model, prompt, messages and execution options...
+  ...requestOptions,
+  hooks: {
+    beforeModel: [metadata => metrics.observeModelStart(metadata)],
+    afterModel: [metadata => metrics.observeModelOutcome(metadata)],
+    beforeTool: [metadata => metrics.observeToolStart(metadata)],
+    afterTool: [metadata => metrics.observeToolOutcome(metadata)],
+  },
+  requiredHooks: {
+    beforeTool: [metadata => allowedPassengerTools.has(metadata.tool)],
+  },
+});
+```
+
+The example uses application-owned `requestOptions`, `metrics` and `allowedPassengerTools`; it does not create those objects. No external exporter or new business policy is configured by this change. Required hooks are additional checks, not substitutes for session/crew authorization, argument validation, budgets, passenger confirmation or evidence verification.
+
+For each actual call, ordering is: existing start event, required before checks in registration order, optional before observers in registration order, the operation, existing success/error event, then optional after observers in registration order. Model operations include token counting and budget reservation/settlement. Tool inputs are checked by the harness before execution; structured tool results are validated before a successful afterTool outcome. Evidence verification and final answer processing still occur afterward. Cached/reused tool results retain `tool_reuse` events and do not claim another execution hook.
+
+Hooks receive a frozen metadata object filtered by the same trace allowlist. It can contain an allowlisted model/tool, round, status, duration, reported token counters and sanitized outcome category. It never includes prompts, replies, arguments, tool facts, credentials or session identifiers. Observer return values are ignored; hooks cannot replace a request or result through this API.
+
+Optional throws, rejected promises and asynchronous timeouts record `hook_failure` and allow the operation/outcome to continue. Required before checks must explicitly return `true`; false, a missing return, a throw, or a timeout blocks that call. Required after checks are rejected because they cannot prevent an operation that already happened. A model denial returns a safe `ClaudeUnavailable` subtype with code `hook_blocked`. A tool denial never reaches execution; the existing harness supplies sanitized unavailable-tool feedback and may answer with a limitation. It does not grant permission on retry.
+
+After observers run for success, provider/executor errors, invalid results and blocked before checks. Observer failures do not replace the original operation error. Default per-callback asynchronous deadline is 100 ms; trusted callers may set `hookTimeoutMs` from 1 to 1,000 ms. The second callback argument is an AbortSignal that is aborted on timeout. Timed-out callbacks must honor it to stop their own work; this does not terminate JavaScript or preempt synchronous code. Keep observers short and free of external actions.
+
+`call_hook` events record phases; `hook_failure` records only phase, callback index, required/optional flag and safe error category. Trace/exporter failures cannot change a hook decision or stop an otherwise permitted chat. Existing trace retention still applies. Tests cover hook ordering, privacy, optional failures/timeouts, required denials/throws/timeouts, malformed results, provider/executor errors, tool reuse and a local synthetic HTTP chat. The failure-injection tests use no live provider calls.
+
+## Combined live verification
+
+Run a single synthetic chat with explicit caching and all lifecycle phases required:
+
+```sh
+node scripts/baseline-chat.mjs --live --verify-flow --report=combined-flow.json
+```
+
+This preserves the same live visitor and usage ledger and writes a separate report without overwriting the original `report.json` or `cache-comparison.json`. `--report` accepts a simple JSON filename only. Combined verification requires a nonempty reply and valid expression, grounded flight-status evidence, complete token counters, cache reads, no error/hook-failure events, and this exact scenario's hook order: beforeModel, afterModel, beforeTool, afterTool, beforeModel, afterModel. It then ends the session and verifies a subsequent chat returns 401 without another model call. The expected sequence is specific to this two-model/one-tool scenario; it does not certify other tool paths. No additional custom business-policy hooks are installed for this run.
+
+On October 27, the live combined run passed in 3,336 ms on configured `claude-haiku-5-5`: two successful model calls, one flight-status execution and grounded evidence. The first model round wrote 4,661 cache tokens, and the second read 4,661. Total reported usage was 1,621 uncached input, 174 output, 4,661 writes and 4,661 reads (11,117 tokens in the usage ledger). All 15 persisted trace events matched the report, every hook phase had the expected position, usage settled successfully, and privacy checks excluded the API key and synthetic visitor identity. Trace ID: `47988df9-d7a5-4ef0-b888-51e76ea4f371`. Evidence: ignored `data/tracing-baseline/live/combined-flow.json`.
+
+This verifies the local HTTP session → Claude → tool → Claude → response → session-end path. It does not retest browser rendering, microphone/audio, hosted handlers or public deployment. The observed time is one sample, not a speed benchmark.
+
 ## Token reservations
 
 Local Claude calls count the full structured input using Anthropic’s count_tokens endpoint, then reserve counted input + maximum output (700 tool-enabled, 300 legacy) + a margin of at least 64 tokens or 2% of input. If counting fails, the conservative byte-based fallback remains. Actual reported usage replaces reservations; ambiguous provider failures retain them. Existing token/request caps and recorded usage are not changed. Trace model events include counted input, reservation amount, and counted/fallback method.
