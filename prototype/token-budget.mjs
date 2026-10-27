@@ -1,7 +1,8 @@
+import { cachedSystem } from './prompt-cache.mjs';
 // Count the same structured input sent to Messages; never log its contents.
-export async function planClaudeReservation({ apiKey, model, system, messages, tools, maxOutputTokens = 700, fetchImpl = fetch }) {
+export async function planClaudeReservation({ apiKey, model, system, cachePrefix, promptCaching = false, messages, tools, maxOutputTokens = 700, fetchImpl = fetch }) {
  if (!Number.isSafeInteger(maxOutputTokens) || maxOutputTokens < 1) throw new Error('Invalid response allowance.');
- const input = { model, system, messages, ...(tools ? { tools } : {}) };
+ const input = { model, system: cachedSystem({ system, cachePrefix, promptCaching }), messages, ...(tools ? { tools } : {}) };
  try {
   const response = await fetchImpl('https://api.anthropic.com/v1/messages/count_tokens', {
    method: 'POST', signal: AbortSignal.timeout(8000),

@@ -1,3 +1,4 @@
+import { cachedSystem } from './prompt-cache.mjs';
 import { logEvent } from './monitor.mjs';
 import { passengerTools } from './tool-contracts.mjs';
 import { executePassengerTool } from './tool-executor.mjs';
@@ -8,13 +9,13 @@ export const passengerToolInstructions = "You have the passenger tools listed in
 import { ClaudeUnavailable } from './claude.mjs';
 
 const connectionEfficiencyInstructions = '\nCONNECTION EFFICIENCY: connection_assistant returns the complete scenario-aware facts in one call. Reuse those facts to answer timing, directions and feasibility together. Do not repeat it to rephrase a question, and do not call flight_status merely to recheck the inbound time already in facts. Use other tools only for genuinely additional passenger questions.';
-export async function requestToolModel({ apiKey, model, system, messages, tools, maxOutputTokens = 700, fetchImpl = fetch }) {
+export async function requestToolModel({ apiKey, model, system, cachePrefix, promptCaching = false, messages, tools, maxOutputTokens = 700, fetchImpl = fetch }) {
  let response;
  try {
   response = await fetchImpl('https://api.anthropic.com/v1/messages', {
    method: 'POST', signal: AbortSignal.timeout(25000),
    headers: { 'content-type':'application/json', 'anthropic-version':'2023-06-01', 'x-api-key':apiKey },
-   body: JSON.stringify({ model, max_tokens: maxOutputTokens, system, messages, tools }),
+   body: JSON.stringify({ model, max_tokens: maxOutputTokens, system: cachedSystem({ system, cachePrefix, promptCaching }), messages, tools }),
   });
  } catch { throw new ClaudeUnavailable('I could not reach Claude. Please try again.'); }
  if (!response.ok) {

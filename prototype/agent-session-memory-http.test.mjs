@@ -18,7 +18,12 @@ test('HTTP follow-up uses session memory after its original topic and preference
    else if(last.content==='How many checked bags can I take?'||last.content==='And now?'){
     if(last.content==='And now?'){
      followup=true;assert.ok(!JSON.stringify(args.messages).includes('reply in Spanish'));assert.ok(!JSON.stringify(args.messages).includes('How many checked bags'));
-     assert.match(args.system,/SESSION MEMORY/);assert.match(args.system,/"language":"spanish"/);assert.match(args.system,/"requiredTools":\["baggage_allowance"\]/);assert.match(args.system,/"fare":"basic"/);
+     assert.ok(Array.isArray(args.system));
+     assert.equal(args.system[0].cache_control.ttl,'5m');
+     assert.ok(!args.system[0].text.includes('SESSION MEMORY ('));
+     assert.ok(!args.system[1].cache_control);
+     const systemText=args.system.map(block=>block.text).join('');
+     assert.match(systemText,/SESSION MEMORY/);assert.match(systemText,/"language":"spanish"/);assert.match(systemText,/"requiredTools":\["baggage_allowance"\]/);assert.match(systemText,/"fare":"basic"/);
     }
     pending=true;content=[{type:'tool_use',id:'bags',name:'baggage_allowance',input:{flightId:'CL204',bagType:'all'}}];
    }else content=[{type:'text',text:JSON.stringify({reply:'Thank you.',expression:'welcoming'})}];
