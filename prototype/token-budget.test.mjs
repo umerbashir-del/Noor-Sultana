@@ -61,3 +61,24 @@ test('missing provider usage retains the reserved amount, and request limits rem
   await assert.rejects(()=>runBudgetedClaude({},options),UsageLimitError);
  }finally{store.close();}
 });
+
+test('timing survives provider and reservation failures without refunding uncertain usage',async()=>{
+ const store=createUsageStore({limits:usageLimitsFromEnv({NOOR_DAILY_CLAUDE_VISITOR_TOKENS:'5000'})});
+ const count=async()=>({inputTokens:100,reservedTokens:3000,reservationMethod:'counted'});
+ try{
+  await assert.rejects(()=>runBudgetedClaude({}, {store,visitorId:visitor,count,requestModel:async()=>{throw Error('provider unavailable');}}),error=>{
+   assert.ok(Number.isSafeInteger(error.timings.countDurationMs));
+   assert.ok(Number.isSafeInteger(error.timings.reservationDurationMs));
+   assert.ok(Number.isSafeInteger(error.timings.providerDurationMs));
+   assert.equal(error.timings.settlementDurationMs,undefined);
+   return true;
+  });
+  assert.equal(store.totals(visitor).visitor.tokens,3000);
+  await assert.rejects(()=>runBudgetedClaude({}, {store,visitorId:visitor,count,requestModel:async()=>{throw Error('must not call');}}),error=>{
+   assert.equal(error.name,'UsageLimitError');
+   assert.ok(Number.isSafeInteger(error.timings.reservationDurationMs));
+   assert.equal(error.timings.providerDurationMs,undefined);
+   return true;
+  });
+ }finally{store.close();}
+});

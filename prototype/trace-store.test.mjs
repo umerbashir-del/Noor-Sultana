@@ -25,3 +25,11 @@ test('traces persist across reopen, are bounded, and expire',async()=>{
  now=1101;assert.equal(store.read().length,0);
  }finally{store?.close();await rm(dir,{recursive:true,force:true});}
 });
+
+test('usage and timing counters accept only nonnegative safe integers',()=>{
+ const fields=['uncachedInputTokens','outputTokens','cacheCreationInputTokens','cacheReadInputTokens','countDurationMs','reservationDurationMs','providerDurationMs','settlementDurationMs'];
+ for(const field of fields){
+  assert.deepEqual(safeTraceFields({[field]:0}),{[field]:0});
+  for(const value of [-1,1.5,NaN,Infinity,'12',Number.MAX_SAFE_INTEGER+1])assert.deepEqual(safeTraceFields({[field]:value}),{});
+ }
+});

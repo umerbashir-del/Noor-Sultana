@@ -22,18 +22,26 @@ export async function planClaudeReservation({ apiKey, model, system, messages, t
  }
 }
 export async function runBudgetedClaude(args, { store, visitorId, requestModel, maxOutputTokens = 700, count = planClaudeReservation }) {
- const reservationInfo = await count({ ...args, maxOutputTokens });
- let reservation;
- try { reservation = store.reserveClaude(visitorId, reservationInfo.reservedTokens); }
- catch(error) { error.reservation = reservationInfo; throw error; }
+ const timings = {};
+ async function timed(field, operation) {
+  const started = performance.now();
+  try { return await operation(); }
+  finally { timings[field] = Math.round(performance.now() - started); }
+ }
+ let reservationInfo, reservation;
  try {
-  const result = await requestModel({ ...args, maxOutputTokens });
-  store.settleClaude(reservation, result.usageTokens);
-  return { ...result, reservation: reservationInfo };
+  reservationInfo = await timed('countDurationMs', () => count({ ...args, maxOutputTokens }));
+  reservation = await timed('reservationDurationMs', () => store.reserveClaude(visitorId, reservationInfo.reservedTokens));
+ } catch(error) { error.reservation = reservationInfo; error.timings = timings; throw error; }
+ try {
+  const result = await timed('providerDurationMs', () => requestModel({ ...args, maxOutputTokens }));
+  await timed('settlementDurationMs', () => store.settleClaude(reservation, result.usageTokens));
+  return { ...result, reservation: reservationInfo, timings };
  } catch(error) {
   // A request that may have reached the provider keeps its reservation.
   store.markUncertain(reservation);
   error.reservation = reservationInfo;
+  error.timings = timings;
   throw error;
  }
 }
