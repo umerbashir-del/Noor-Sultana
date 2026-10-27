@@ -1,10 +1,12 @@
 // Shared metadata allowlist: no database or exporter dependency.
 const statuses = new Set(['started','success','error']);
-const errors = new Set(['missing_api_key','usage_limit','model_unavailable','invalid_response','unknown_tool','invalid_arguments','tool_failed','call_limit','agent_failed','missing_evidence']);
-const numericFields = ['round','durationMs','tokens','inputTokens','reservedTokens','modelCalls','toolCalls','successfulTools','failedTools','reusedTools','uncachedInputTokens','outputTokens','cacheCreationInputTokens','cacheReadInputTokens','countDurationMs','reservationDurationMs','providerDurationMs','settlementDurationMs'];
+const errors = new Set(['hook_blocked','hook_failed','hook_timeout','missing_api_key','usage_limit','model_unavailable','invalid_response','unknown_tool','invalid_arguments','tool_failed','call_limit','agent_failed','missing_evidence']);
+const numericFields = ['hookIndex','round','durationMs','tokens','inputTokens','reservedTokens','modelCalls','toolCalls','successfulTools','failedTools','reusedTools','uncachedInputTokens','outputTokens','cacheCreationInputTokens','cacheReadInputTokens','countDurationMs','reservationDurationMs','providerDurationMs','settlementDurationMs'];
 // Deliberately no prompt, response, arguments, headers, error messages, or session identifier fields.
 export function safeTraceFields(fields = {}, toolNames = []) {
  const safe = {};
+ if (['beforeModel','afterModel','beforeTool','afterTool'].includes(fields.hookPhase)) safe.hookPhase = fields.hookPhase;
+ if (typeof fields.hookRequired === 'boolean') safe.hookRequired = fields.hookRequired;
  if (['ok','unsupported','unavailable','needs_confirmation'].includes(fields.resultStatus)) safe.resultStatus = fields.resultStatus;
  if (['grounded','limited','not_required'].includes(fields.evidenceStatus)) safe.evidenceStatus = fields.evidenceStatus;
  if (['counted','fallback'].includes(fields.reservationMethod)) safe.reservationMethod = fields.reservationMethod;

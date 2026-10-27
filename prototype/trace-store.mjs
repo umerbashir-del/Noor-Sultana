@@ -4,7 +4,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
-const events = new Set(['run_start','model_start','model_end','tool_start','tool_end','tool_reuse','evidence_check','evidence_repair','argument_repair','action_claim_blocked','run_end']);
+const events = new Set(['call_hook','hook_failure','run_start','model_start','model_end','tool_start','tool_end','tool_reuse','evidence_check','evidence_repair','argument_repair','action_claim_blocked','run_end']);
 import { safeTraceFields } from './trace-fields.mjs';
 export { safeTraceFields } from './trace-fields.mjs';
 

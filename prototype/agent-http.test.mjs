@@ -45,6 +45,8 @@ test('local HTTP agent turns persist redacted correlated traces without real API
   assert.ok(rows.length>=8);
   assert.ok(rows.every(row=>row.trace_id===result.traceId));
   assert.equal(rows.at(-1).event,'run_end');
+  assert.deepEqual(rows.filter(row=>row.event==='call_hook').map(row=>JSON.parse(row.metadata).hookPhase),
+   ['beforeModel','afterModel','beforeTool','afterTool','beforeModel','afterModel']);
   const end=JSON.parse(rows.at(-1).metadata);
   assert.equal(end.tokens,34);
   assert.equal(end.uncachedInputTokens,9);

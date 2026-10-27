@@ -1,6 +1,7 @@
+import { createCallHooks } from './call-hooks.mjs';
 import { cachedSystem } from './prompt-cache.mjs';
 import { logEvent } from './monitor.mjs';
-import { passengerTools } from './tool-contracts.mjs';
+import { passengerTools, validateToolResult } from './tool-contracts.mjs';
 import { executePassengerTool } from './tool-executor.mjs';
 import { runToolLoop } from './agent-loop.mjs';
 export { passengerTools, executePassengerTool };
@@ -45,6 +46,7 @@ function traceUsage(usage) {
   .map(([target, source]) => [target, usage[source]]));
 }
 function traceErrorKind(error, fallback) {
+ if (error?.code === 'hook_blocked') return 'hook_blocked';
  if (error?.name === 'UsageLimitError') return 'usage_limit';
  if (error?.code === 'unknown_tool' || error?.code === 'invalid_arguments' || error?.code === 'call_limit' || error?.code === 'invalid_response') return error.code;
  if (error?.name === 'ClaudeUnavailable') return 'model_unavailable';
@@ -54,6 +56,7 @@ export async function answerWithTools(args) {
  let trace;
  try { trace = args.traceFactory?.(); } catch { /* Telemetry must not interrupt passenger assistance. */ }
  const emit = (event, fields) => { try { trace?.event(event, fields); } catch { /* Fail open. */ } };
+ const runHook = createCallHooks({ hooks: args.hooks, requiredHooks: args.requiredHooks, timeoutMs: args.hookTimeoutMs, emit });
  const started = Date.now();
  const usageTotals = Object.fromEntries(Object.keys(usageFields).map(key => [key, 0]));
  const incompleteUsage = new Set();
@@ -67,7 +70,9 @@ export async function answerWithTools(args) {
    callModel: async (request) => {
     const round = ++modelCalls, began = Date.now();
     emit('model_start', { status: 'started', round });
+    let outcome = 'error', outcomeFields = {};
     try {
+     await runHook('beforeModel', { model: args.model, round, status: 'started' });
      const result = await (args.callModel || requestToolModel)(request);
      if (!Array.isArray(result?.content)) {
       const error = new ClaudeUnavailable('Claude returned an unreadable response.');
@@ -81,29 +86,41 @@ export async function answerWithTools(args) {
       if (breakdown[key] === undefined) incompleteUsage.add(key);
       else usageTotals[key] += breakdown[key];
      }
+     outcome = 'success';
+     outcomeFields = { tokens: usage, ...breakdown };
      emit('model_end', { status: 'success', round, durationMs: Date.now()-began, tokens: usage, ...result.reservation, ...breakdown, ...result.timings });
      return result;
     } catch (error) {
+     outcomeFields = { errorKind: traceErrorKind(error, 'model_unavailable') };
      usageComplete = false;
      for (const key of Object.keys(usageFields)) incompleteUsage.add(key);
      emit('model_end', { status: 'error', round, durationMs: Date.now()-began, errorKind: error?.code === 'invalid_response' ? 'invalid_response' : traceErrorKind(error, 'model_unavailable'), ...error?.reservation, ...error?.timings });
      throw error;
+    } finally {
+     await runHook('afterModel', { model: args.model, round, status: outcome, durationMs: Date.now()-began, ...outcomeFields });
     }
    },
    execute: async (name,input,context) => {
     toolCalls++;
     const began = Date.now();
     emit('tool_start', { status: 'started', tool: name });
+    let outcome = 'error', outcomeFields = {};
     try {
+     await runHook('beforeTool', { tool: name, status: 'started' });
      const output = await (args.execute || executePassengerTool)(name,input,context);
-     if (!output || typeof output.reply !== 'string') throw new Error('Invalid tool result');
+     validateToolResult(output, name);
+     outcome = 'success';
+     outcomeFields = { confirmationRequired: output.confirmationRequired, resultStatus: output.status };
      successfulTools++;
      emit('tool_end', { status: 'success', tool: name, durationMs: Date.now()-began, confirmationRequired: output.confirmationRequired, resultStatus: output.status });
      return output;
     } catch (error) {
+     outcomeFields = { errorKind: traceErrorKind(error, 'tool_failed') };
      failedTools++;
      emit('tool_end', { status: 'error', tool: name, durationMs: Date.now()-began, errorKind: traceErrorKind(error,'tool_failed') });
      throw error;
+    } finally {
+     await runHook('afterTool', { tool: name, status: outcome, durationMs: Date.now()-began, ...outcomeFields });
     }
    },
   });
