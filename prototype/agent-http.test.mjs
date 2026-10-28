@@ -25,10 +25,10 @@ test('local HTTP agent turns persist redacted correlated traces without real API
    if(String(url)==='https://api.anthropic.com/v1/messages/count_tokens')return Response.json({input_tokens:100});
    if(String(url)!=='https://api.anthropic.com/v1/messages')return originalFetch(url,options);
    calls++;
-   if(calls%2===1)return Response.json({content:[{type:'tool_use',id:'private-tool-id',name: 'flight_status', input: fixtureInput('flight_status', "Flight status")}],usage:{input_tokens:4,output_tokens:2}});
+   if(calls%2===1)return Response.json({content:[{type:'tool_use',id:'private-tool-id',name: 'flight_status', input: fixtureInput('flight_status', "Flight status")}],usage:{input_tokens:4,output_tokens:2,cache_creation_input_tokens:10,cache_read_input_tokens:0}});
    const body=JSON.parse(options.body);
    assert.equal(body.messages.at(-1).content[0].type,'tool_result');
-   return Response.json({content:[{type:'text',text:'{"reply":"Private answer: demo flight on time.","expression":"thoughtful"}'}],usage:{input_tokens:5,output_tokens:3}});
+   return Response.json({content:[{type:'text',text:'{"reply":"Private answer: demo flight on time.","expression":"thoughtful"}'}],usage:{input_tokens:5,output_tokens:3,cache_creation_input_tokens:0,cache_read_input_tokens:10}});
   };
   ({server}=await import('./server.mjs'));
   if(!server.listening)await once(server,'listening');
@@ -45,7 +45,18 @@ test('local HTTP agent turns persist redacted correlated traces without real API
   assert.ok(rows.length>=8);
   assert.ok(rows.every(row=>row.trace_id===result.traceId));
   assert.equal(rows.at(-1).event,'run_end');
-  assert.equal(JSON.parse(rows.at(-1).metadata).tokens,14);
+  assert.deepEqual(rows.filter(row=>row.event==='call_hook').map(row=>JSON.parse(row.metadata).hookPhase),
+   ['beforeModel','afterModel','beforeTool','afterTool','beforeModel','afterModel']);
+  const end=JSON.parse(rows.at(-1).metadata);
+  assert.equal(end.tokens,34);
+  assert.equal(end.uncachedInputTokens,9);
+  assert.equal(end.outputTokens,5);
+  assert.equal(end.cacheCreationInputTokens,10);
+  assert.equal(end.cacheReadInputTokens,10);
+  const models=rows.filter(row=>row.event==='model_end').map(row=>JSON.parse(row.metadata));
+  assert.equal(models[0].inputTokens,100); // Preflight count, not provider uncached input.
+  assert.equal(models[0].uncachedInputTokens,4);
+  for(const model of models)for(const field of ['countDurationMs','reservationDurationMs','providerDurationMs','settlementDurationMs'])assert.ok(Number.isSafeInteger(model[field])&&model[field]>=0);
   for(const secret of ['private-test-key','PRIVATE','passenger@example.com','private-tool-id','Private answer',cookies])assert.ok(!JSON.stringify(rows).includes(secret));
   for(const flag of [undefined,false,null,'false']){
    const start=await originalFetch(base+'/api/session',{method:'POST'});const cookie=start.headers.getSetCookie().map(c=>c.split(';')[0]).join('; ');

@@ -10,6 +10,7 @@ import { requiredEvidence,claimedEvidence,verifiedAnswer,matchingEvidence } from
 import { ClaudeUnavailable } from './claude.mjs';
 
 export async function runToolLoop({apiKey,model,system,messages,context={},callModel,execute=executePassengerTool,onToolReuse=()=>{},onEvidence=()=>{}}) {
+ const cachePrefix = system; // Capture fixed instructions before turn-specific additions.
  if(!apiKey)throw new ClaudeUnavailable('Claude is not connected. Add the server API key and restart Noor.');
  const question=context.originalMessage||[...messages].reverse().find(m=>m.role==='user'&&typeof m.content==='string')?.content||'';
  const memory=memoryForTurn(context.sessionMemory,question,messages);
@@ -110,7 +111,7 @@ export async function runToolLoop({apiKey,model,system,messages,context={},callM
   }
  }
  for(let round=0;round<4;round++){
-  const response=await callModel({apiKey,model,system,messages:turns,tools:availableTools});
+  const response=await callModel({apiKey,model,system,cachePrefix,messages:turns,tools:availableTools});
   const requests=response.content.filter(p=>p.type==='tool_use');
   if(!requests.length){
    const text=response.content.filter(p=>p.type==='text').map(p=>p.text).join('\n').trim();

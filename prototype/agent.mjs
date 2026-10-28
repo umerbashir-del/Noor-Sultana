@@ -1,5 +1,7 @@
+import { createCallHooks } from './call-hooks.mjs';
+import { cachedSystem } from './prompt-cache.mjs';
 import { logEvent } from './monitor.mjs';
-import { passengerTools } from './tool-contracts.mjs';
+import { passengerTools, validateToolResult } from './tool-contracts.mjs';
 import { executePassengerTool } from './tool-executor.mjs';
 import { runToolLoop } from './agent-loop.mjs';
 export { passengerTools, executePassengerTool };
@@ -8,13 +10,13 @@ export const passengerToolInstructions = "You have the passenger tools listed in
 import { ClaudeUnavailable } from './claude.mjs';
 
 const connectionEfficiencyInstructions = '\nCONNECTION EFFICIENCY: connection_assistant returns the complete scenario-aware facts in one call. Reuse those facts to answer timing, directions and feasibility together. Do not repeat it to rephrase a question, and do not call flight_status merely to recheck the inbound time already in facts. Use other tools only for genuinely additional passenger questions.';
-export async function requestToolModel({ apiKey, model, system, messages, tools, maxOutputTokens = 700, fetchImpl = fetch }) {
+export async function requestToolModel({ apiKey, model, system, cachePrefix, promptCaching = false, messages, tools, maxOutputTokens = 700, fetchImpl = fetch }) {
  let response;
  try {
   response = await fetchImpl('https://api.anthropic.com/v1/messages', {
    method: 'POST', signal: AbortSignal.timeout(25000),
    headers: { 'content-type':'application/json', 'anthropic-version':'2023-06-01', 'x-api-key':apiKey },
-   body: JSON.stringify({ model, max_tokens: maxOutputTokens, system, messages, tools }),
+   body: JSON.stringify({ model, max_tokens: maxOutputTokens, system: cachedSystem({ system, cachePrefix, promptCaching }), messages, tools }),
   });
  } catch { throw new ClaudeUnavailable('I could not reach Claude. Please try again.'); }
  if (!response.ok) {
@@ -33,7 +35,18 @@ async function answerWithToolsCore(args) {
  return runToolLoop({ ...args, system: args.system + '\n\n' + passengerToolInstructions + connectionEfficiencyInstructions + '\nUse named structured input fields, never a generic query. Results contain status, facts, scope, observedAt, simulated, limitations and confirmationRequired. Unsupported or unavailable results are not evidence. The harness verifies and renders protected flight, baggage and availability facts. Make at most one requested correction for missing evidence or invalid arguments.' });
 }
 
+// Keep provider usage separate from the preflight input-token count in reservation.
+const usageFields = {
+ uncachedInputTokens: 'input_tokens', outputTokens: 'output_tokens',
+ cacheCreationInputTokens: 'cache_creation_input_tokens', cacheReadInputTokens: 'cache_read_input_tokens',
+};
+function traceUsage(usage) {
+ return Object.fromEntries(Object.entries(usageFields)
+  .filter(([, source]) => Number.isSafeInteger(usage?.[source]) && usage[source] >= 0)
+  .map(([target, source]) => [target, usage[source]]));
+}
 function traceErrorKind(error, fallback) {
+ if (error?.code === 'hook_blocked') return 'hook_blocked';
  if (error?.name === 'UsageLimitError') return 'usage_limit';
  if (error?.code === 'unknown_tool' || error?.code === 'invalid_arguments' || error?.code === 'call_limit' || error?.code === 'invalid_response') return error.code;
  if (error?.name === 'ClaudeUnavailable') return 'model_unavailable';
@@ -43,7 +56,11 @@ export async function answerWithTools(args) {
  let trace;
  try { trace = args.traceFactory?.(); } catch { /* Telemetry must not interrupt passenger assistance. */ }
  const emit = (event, fields) => { try { trace?.event(event, fields); } catch { /* Fail open. */ } };
+ const runHook = createCallHooks({ hooks: args.hooks, requiredHooks: args.requiredHooks, timeoutMs: args.hookTimeoutMs, emit });
  const started = Date.now();
+ const usageTotals = Object.fromEntries(Object.keys(usageFields).map(key => [key, 0]));
+ const incompleteUsage = new Set();
+ const completeUsageTotals = () => Object.fromEntries(Object.entries(usageTotals).filter(([key]) => !incompleteUsage.has(key)));
  let modelCalls = 0, toolCalls = 0, successfulTools = 0, failedTools = 0, reusedTools = 0, tokens = 0, usageComplete = true;
  emit('run_start', { status: 'started', model: args.model, promptVersion: createHash('sha256').update((args.system || '') + passengerToolInstructions + connectionEfficiencyInstructions + JSON.stringify(passengerTools)).digest('hex').slice(0,16) });
  try {
@@ -53,7 +70,9 @@ export async function answerWithTools(args) {
    callModel: async (request) => {
     const round = ++modelCalls, began = Date.now();
     emit('model_start', { status: 'started', round });
+    let outcome = 'error', outcomeFields = {};
     try {
+     await runHook('beforeModel', { model: args.model, round, status: 'started' });
      const result = await (args.callModel || requestToolModel)(request);
      if (!Array.isArray(result?.content)) {
       const error = new ClaudeUnavailable('Claude returned an unreadable response.');
@@ -62,34 +81,53 @@ export async function answerWithTools(args) {
      }
      const usage = Number.isSafeInteger(result.usageTokens) && result.usageTokens >= 0 ? result.usageTokens : undefined;
      if (usage !== undefined) tokens += usage; else usageComplete = false;
-     emit('model_end', { status: 'success', round, durationMs: Date.now()-began, tokens: usage, ...result.reservation });
+     const breakdown = traceUsage(result.usage);
+     for (const key of Object.keys(usageFields)) {
+      if (breakdown[key] === undefined) incompleteUsage.add(key);
+      else usageTotals[key] += breakdown[key];
+     }
+     outcome = 'success';
+     outcomeFields = { tokens: usage, ...breakdown };
+     emit('model_end', { status: 'success', round, durationMs: Date.now()-began, tokens: usage, ...result.reservation, ...breakdown, ...result.timings });
      return result;
     } catch (error) {
-     emit('model_end', { status: 'error', round, durationMs: Date.now()-began, errorKind: error?.code === 'invalid_response' ? 'invalid_response' : traceErrorKind(error, 'model_unavailable'), ...error?.reservation });
+     outcomeFields = { errorKind: traceErrorKind(error, 'model_unavailable') };
+     usageComplete = false;
+     for (const key of Object.keys(usageFields)) incompleteUsage.add(key);
+     emit('model_end', { status: 'error', round, durationMs: Date.now()-began, errorKind: error?.code === 'invalid_response' ? 'invalid_response' : traceErrorKind(error, 'model_unavailable'), ...error?.reservation, ...error?.timings });
      throw error;
+    } finally {
+     await runHook('afterModel', { model: args.model, round, status: outcome, durationMs: Date.now()-began, ...outcomeFields });
     }
    },
    execute: async (name,input,context) => {
     toolCalls++;
     const began = Date.now();
     emit('tool_start', { status: 'started', tool: name });
+    let outcome = 'error', outcomeFields = {};
     try {
+     await runHook('beforeTool', { tool: name, status: 'started' });
      const output = await (args.execute || executePassengerTool)(name,input,context);
-     if (!output || typeof output.reply !== 'string') throw new Error('Invalid tool result');
+     validateToolResult(output, name);
+     outcome = 'success';
+     outcomeFields = { confirmationRequired: output.confirmationRequired, resultStatus: output.status };
      successfulTools++;
      emit('tool_end', { status: 'success', tool: name, durationMs: Date.now()-began, confirmationRequired: output.confirmationRequired, resultStatus: output.status });
      return output;
     } catch (error) {
+     outcomeFields = { errorKind: traceErrorKind(error, 'tool_failed') };
      failedTools++;
      emit('tool_end', { status: 'error', tool: name, durationMs: Date.now()-began, errorKind: traceErrorKind(error,'tool_failed') });
      throw error;
+    } finally {
+     await runHook('afterTool', { tool: name, status: outcome, durationMs: Date.now()-began, ...outcomeFields });
     }
    },
   });
-  emit('run_end', { status: 'success', evidenceStatus: answer.evidenceStatus, durationMs: Date.now()-started, modelCalls,toolCalls,successfulTools,failedTools,reusedTools,tokens: usageComplete ? tokens : undefined });
+  emit('run_end', { status: 'success', evidenceStatus: answer.evidenceStatus, durationMs: Date.now()-started, modelCalls,toolCalls,successfulTools,failedTools,reusedTools,tokens: usageComplete ? tokens : undefined, ...completeUsageTotals() });
   return { ...answer, ...(trace?.id ? { traceId: trace.id } : {}) };
  } catch(error) {
-  emit('run_end', { status: 'error', durationMs: Date.now()-started, modelCalls,toolCalls,successfulTools,failedTools,reusedTools,tokens: usageComplete ? tokens : undefined, errorKind: !args.apiKey ? 'missing_api_key' : traceErrorKind(error,'agent_failed') });
+  emit('run_end', { status: 'error', durationMs: Date.now()-started, modelCalls,toolCalls,successfulTools,failedTools,reusedTools,tokens: usageComplete ? tokens : undefined, ...completeUsageTotals(), errorKind: !args.apiKey ? 'missing_api_key' : traceErrorKind(error,'agent_failed') });
   if (trace?.id) error.traceId = trace.id;
   throw error;
  }

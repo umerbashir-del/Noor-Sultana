@@ -623,7 +623,7 @@ async function handleChat(request, response) {
         apiKey: process.env.ANTHROPIC_API_KEY, model, system: systemPrompt + '\n' + journeySystemContext(getJourney(session.memory.journeyId) || getJourney('tokyo')),
         messages: sessions.context(session, message), context: { ...body, originalMessage: message, local: true, journeyId: session.memory.journeyId || 'tokyo', sessionMemory: session.memory },
         traceFactory: () => agentTraceStore?.start(),
-        callModel: (args) => runBudgetedClaude(args, { store: usageStore, visitorId: session.visitorId, requestModel: requestToolModel, maxOutputTokens: 700 }),
+        callModel: (args) => runBudgetedClaude({ ...args, promptCaching: process.env.NOOR_PROMPT_CACHE !== '0' }, { store: usageStore, visitorId: session.visitorId, requestModel: requestToolModel, maxOutputTokens: 700 }),
       });
       return finishChat(response, session, revision, message, answer);
     } catch (error) {

@@ -82,3 +82,22 @@ test('unavailable tool result returns an error to the model without leaking raw 
  assert.equal(answer.reply,'Weather is unavailable.');
  assert.deepEqual(answer.toolsUsed,[]);
 });
+
+test('unknown provider usage is omitted from run totals rather than recorded as zero',async()=>{
+ const store=createTraceStore({dbPath:':memory:'});
+ const args={apiKey:'offline',model:'claude-test',system:'scope',messages:[{role:'user',content:'Hello'}],traceFactory:()=>store.start()};
+ try{
+  await answerWithTools({...args,callModel:async()=>({content:[{type:'text',text:'{"reply":"Welcome aboard."}'}],usageTokens:10,usage:{input_tokens:8,output_tokens:2}})});
+  let end=store.read().at(-1).metadata;
+  assert.equal(end.uncachedInputTokens,8);
+  assert.equal(end.outputTokens,2);
+  assert.equal(end.cacheReadInputTokens,undefined);
+  assert.equal(end.cacheCreationInputTokens,undefined);
+  await assert.rejects(()=>answerWithTools({...args,callModel:async()=>{throw Error('private provider error');}}));
+  end=store.read().at(-1).metadata;
+  assert.equal(end.tokens,undefined);
+  assert.equal(end.uncachedInputTokens,undefined);
+  assert.equal(end.outputTokens,undefined);
+  assert.ok(!JSON.stringify(store.read()).includes('private provider error'));
+ }finally{store.close();}
+});
